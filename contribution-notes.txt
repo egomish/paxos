@@ -1,0 +1,2 @@
+egomish: created all Java files
+Dockerfile from https://github.com/docker-library/openjdk
