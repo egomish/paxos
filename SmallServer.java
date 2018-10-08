@@ -26,14 +26,13 @@ public void handle (HttpExchange exch) throws IOException
         } else {
             rescode = 404;
             resmsg = method + " " + uri + ": " + rescode + " not found.";
-            System.err.println(resmsg);
         }
     } catch (MalformedURLException e) {
         rescode = 405;
         resmsg = method + " " + uri + ": " + rescode + " not allowed.";
-        System.err.println(resmsg);
     }
     try {
+        System.err.println("Responding to " + method + " with " + rescode);
         exch.sendResponseHeaders(rescode, 0);
         OutputStream out = exch.getResponseBody();
         out.write(resmsg.getBytes());
@@ -83,7 +82,9 @@ private SmallServer()
 public static void
 main(String[] args) throws Exception
 {
-    HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+    int port = 8080;
+    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+    System.out.println("Server running on port " + port + ".");
     server.createContext("/", new SmallServer());
     server.setExecutor(null); // creates a default executor
     server.start();
