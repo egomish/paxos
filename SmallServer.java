@@ -57,7 +57,7 @@ private String doHello (String method, URI uri) throws MalformedURLException
 }
 
 //TODO: handle multiple queries for POST
-        (split on '&', then split on '=')
+//      (split on '&', then split on '=')
 private String doTest (String method, URI uri) throws MalformedURLException
 {
     String path = uri.getPath();
