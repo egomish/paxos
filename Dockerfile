@@ -1,57 +1,41 @@
-FROM oraclelinux:7-slim
+FROM alpine:3.8
+
+### begin ESG ###
 
 WORKDIR /data
-
 COPY . /data
 
-RUN set -eux; \
-	yum install -y \
-		gzip \
-		tar \
-		\
-# java.lang.UnsatisfiedLinkError: /usr/java/openjdk-12/lib/libfontmanager.so: libfreetype.so.6: cannot open shared object file: No such file or directory
-# https://github.com/docker-library/openjdk/pull/235#issuecomment-424466077
-		freetype fontconfig \
-	; \
-	rm -rf /var/cache/yum
+### end ESG ###
 
-# Default to UTF-8 file.encoding
-#ENV LANG C.UTF-8
-# TODO oraclelinux doesn't have C.UTF-8 by default??
-
-ENV JAVA_HOME /usr/java/openjdk-12
+ENV JAVA_HOME /opt/openjdk-12
 ENV PATH $JAVA_HOME/bin:$PATH
 
 # http://jdk.java.net/
-ENV JAVA_VERSION 12-ea+13
-ENV JAVA_URL https://download.java.net/java/early_access/jdk12/13/GPL/openjdk-12-ea+13_linux-x64_bin.tar.gz
-ENV JAVA_SHA256 555b0518f1ada185f1d1b77c79cb6f7a62ed17722cd754223bf92ad617f3c330
+ENV JAVA_VERSION 12-ea+14
+ENV JAVA_URL https://download.java.net/java/early_access/alpine/14/binaries/openjdk-12-ea+14_linux-x64-musl_bin.tar.gz
+ENV JAVA_SHA256 172c7d7c6859253822e03f0839f83627ffe06055f118423c6ef619a1af836b4c
+# "For Alpine Linux, builds are produced on a reduced schedule and may not be in sync with the other platforms."
 
 RUN set -eux; \
-	\
-	curl -fL -o /openjdk.tgz "$JAVA_URL"; \
-	echo "$JAVA_SHA256 */openjdk.tgz" | sha256sum -c -; \
-	mkdir -p "$JAVA_HOME"; \
-	tar --extract --file /openjdk.tgz --directory "$JAVA_HOME" --strip-components 1; \
-	rm /openjdk.tgz; \
-	\
-# https://github.com/oracle/docker-images/blob/a56e0d1ed968ff669d2e2ba8a1483d0f3acc80c0/OracleJava/java-8/Dockerfile#L17-L19
-	ln -sfT "$JAVA_HOME" /usr/java/default; \
-	ln -sfT "$JAVA_HOME" /usr/java/latest; \
-	for bin in "$JAVA_HOME/bin/"*; do \
-		base="$(basename "$bin")"; \
-		[ ! -e "/usr/bin/$base" ]; \
-		alternatives --install "/usr/bin/$base" "$base" "$bin" 20000; \
-	done; \
-	\
+        \
+        wget -O /openjdk.tgz "$JAVA_URL"; \
+        echo "$JAVA_SHA256 */openjdk.tgz" | sha256sum -c -; \
+        mkdir -p "$JAVA_HOME"; \
+        tar --extract --file /openjdk.tgz --directory "$JAVA_HOME" --strip-components 1; \
+        rm /openjdk.tgz; \
+        \
 # https://github.com/docker-library/openjdk/issues/212#issuecomment-420979840
 # http://openjdk.java.net/jeps/341
-	java -Xshare:dump; \
-	\
+        java -Xshare:dump; \
+        \
 # basic smoke test
-	java --version; \
-	javac --version
+        java --version; \
+        javac --version
+
+### begin ESG ###
 
 EXPOSE 8080
 
-CMD ["bash"]
+CMD ["sh"]
+
+### end ESG ###
