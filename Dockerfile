@@ -52,7 +52,6 @@ RUN set -eux; \
 	java --version; \
 	javac --version
 
-# https://docs.oracle.com/javase/10/tools/jshell.htm
-# https://docs.oracle.com/javase/10/jshell/
-# https://en.wikipedia.org/wiki/JShell
-CMD ["jshell"]
+EXPOSE 8080
+
+CMD ["bash"]
