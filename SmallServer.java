@@ -23,6 +23,8 @@ public void handle (HttpExchange exch) throws IOException
             resmsg = doHello(method, uri);
         } else if (path.startsWith("/test")) {
             resmsg = doTest(method, uri);
+        } else if (path.startsWith("/kvs")) {
+            resmsg = doKVS(method, uri);
         } else {
             rescode = 404;
             resmsg = method + " " + uri + ": " + rescode + " not found.";
@@ -69,6 +71,19 @@ private String doTest (String method, URI uri) throws MalformedURLException
         if (strarr[0].equals("msg")) {
             resmsg = "POST message received: " + strarr[1];
         }
+    } else {
+        throw new MalformedURLException();
+    }
+    return resmsg;
+}
+
+private String doKVS (String method, URI uri) throws MalformedURLException
+{
+    String path = uri.getPath();
+    String query = uri.getQuery();
+    String resmsg = "";
+    if (method.equals("GET")) {
+        resmsg = "GET for KVS!!";
     } else {
         throw new MalformedURLException();
     }
