@@ -3,6 +3,31 @@ import com.google.gson.Gson;
 public class ResponseBody {
 
 
+public void setReplacedFlag (int n)
+{
+    replaced = new Integer(n);
+}
+
+public void setMessageString (String str)
+{
+    msg = str;
+}
+
+public void setErrorString (String str)
+{
+    error = str;
+}
+
+public void setValueString (String str)
+{
+    value = str;
+}
+
+public void setResponseBodyField (String name, String type)
+{
+    System.out.println("this function does nothing!!");
+}
+
 public String toJSON ()
 {
     Gson gson = new Gson();
@@ -10,15 +35,17 @@ public String toJSON ()
     return json;
 }
 
-ResponseBody (int success, String m, String err)
+public ResponseBody ()
 {
-    replaced = success;
-    msg = m;
-    error = err;
+    replaced = null;
+    msg = null;
+    error = null;
+    value = null;
 }
 
-int replaced;
+Integer replaced;
 String msg;
 String error;
+String value;
 
 }

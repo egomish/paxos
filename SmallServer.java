@@ -1,10 +1,8 @@
 import java.util.HashMap;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.InetSocketAddress;
-import java.net.URISyntaxException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -13,30 +11,74 @@ import com.sun.net.httpserver.HttpServer;
 public class SmallServer implements HttpHandler
 {
 
+
 public void handle (HttpExchange exch) throws IOException
 {
-    String method = exch.getRequestMethod();
-    URI uri = exch.getRequestURI();
-    String path = uri.getPath();
-    String body = readBody(exch.getRequestBody());
-    String resmsg = "";
-    int rescode = 200;
-    try {
-        if (path.startsWith("/hello")) {
-            resmsg = doHello(method, uri);
-        } else if (path.startsWith("/test")) {
-            resmsg = doTest(method, uri);
-        } else if (path.startsWith("/kvs")) {
-            resmsg = doKVS(method, uri, body);
-        } else {
-            throw new URISyntaxException(path, "404");
-        }
-    } catch (URISyntaxException e) {
-        rescode = Integer.parseInt(e.getReason());
-        resmsg = e.getInput() + ": " + e.getReason() + " not found.";
+    String path = exch.getRequestURI().getPath();
+    if (path.startsWith("/hello")) {
+        doHello(exch);
+    } else if (path.startsWith("/test")) {
+        doTest(exch);
+    } else if (path.startsWith("/kvs")) {
+        doKVS(exch);
+    } else {
+        String method = exch.getRequestMethod();
+        sendResponse(exch, 404, "", method + " " + path + " not found");
     }
+}
+
+private static String parseKeyFromQuery (String query)
+{
+    if (query == null) {
+        return null;
+    }
+    String[] pairs = query.split("&");
+    for (int i = 0; i < pairs.length; i += 1) {
+        String[] split = pairs[i].split("=");
+        if (split[0].equals("key")) {
+            return split[1];
+        }
+    }
+    return null;
+}
+
+private static boolean keyIsValid (String key)
+{
+    if (key.length() == 0) {
+        return false;
+    }
+    if (key.length() > 250) {
+        return false;
+    }
+    for (int i = 0; i < key.length(); i += 1) {
+        if ('a' <= key.charAt(i) && key.charAt(i) <= 'z') {
+            continue;
+        }
+        if ('A' <= key.charAt(i) && key.charAt(i) <= 'Z') {
+            continue;
+        }
+        if ('0' <= key.charAt(i) && key.charAt(i) <= '9') {
+            continue;
+        }
+        if (key.charAt(i) == '_') {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+private void sendResponse (HttpExchange exch, 
+                           int rescode, 
+                           String resmsg, 
+                           String restype)
+{
     try {
+        String method = exch.getRequestMethod();
         System.err.println("Responding to " + method + " with " + rescode);
+        if (restype != null) {
+            exch.getResponseHeaders().set("Content-Type", restype);
+        }
         exch.sendResponseHeaders(rescode, 0);
         OutputStream out = exch.getResponseBody();
         out.write(resmsg.getBytes());
@@ -47,50 +89,31 @@ public void handle (HttpExchange exch) throws IOException
     }
 }
 
-private String readBody (InputStream reqin)
+private void doHello (HttpExchange exch)
 {
-    String body = "";
-    try {
-        int b = reqin.read();
-        while (b != -1) {
-            body += b;
-        }
-    } catch (IOException e) {
-        System.err.println("I/O exception occurred while reading request body.");
-        return null;
-    }
-    System.out.println("Body: '" + body + "'");
-    return body;
-}
-
-private String[][] parseQuery (String query)
-{
-    String[] pairs = query.split("&");
-    String[][] splitpairs = new String[pairs.length][];
-    for (int i = 0; i < pairs.length; i += 1) {
-        splitpairs[i] = pairs[i].split("=");
-    }
-    return splitpairs;
-}
-
-private String doHello (String method, URI uri) throws URISyntaxException
-{
+    String method = exch.getRequestMethod();
+    URI uri = exch.getRequestURI();
     String path = uri.getPath();
+    int rescode = 200;
     String resmsg = "";
     if (method.equals("GET")) {
         resmsg = "Hello world!";
     } else {
-        throw new URISyntaxException(method + " " + path, "405");
+        rescode = 405;
+        resmsg = method + " " + path + " not allowed";
     }
-    return resmsg;
+    sendResponse(exch, rescode, resmsg, null);
 }
 
 //TODO: handle multiple queries for POST
 //      (split on '&', then split on '=')
-private String doTest (String method, URI uri) throws URISyntaxException
+private void doTest (HttpExchange exch)
 {
+    String method = exch.getRequestMethod();
+    URI uri = exch.getRequestURI();
     String path = uri.getPath();
     String query = uri.getQuery();
+    int rescode = 200;
     String resmsg = "";
     if (method.equals("GET")) {
         resmsg = "GET request received";
@@ -98,49 +121,106 @@ private String doTest (String method, URI uri) throws URISyntaxException
         String[] strarr = query.split("=");
         if (strarr[0].equals("msg")) {
             resmsg = "POST message received: " + strarr[1];
+        } else {
+            rescode = 404;
+            resmsg = method + " " + path + " not found";
         }
     } else {
-        throw new URISyntaxException(method + " " + path, "405");
+        rescode = 405;
+        resmsg = method + " " + path + " not allowed";
     }
-    return resmsg;
+    sendResponse(exch, rescode, resmsg, null);
 }
 
-/*
- *  URI syntax:
- *      GET:    key=<key>
- *      PUT:    key=<key>&value=<value>
- *      DELETE: key=<key>
- *  We require that the queries are always ordered key[, value]
- */
-private String doKVS (String method, URI uri, String body)
-               throws URISyntaxException
+private void doKVS (HttpExchange exch)
 {
-    String path = uri.getPath();
-    String[][] query = parseQuery(uri.getQuery());
+    //request fields
+    String method = exch.getRequestMethod();
+    URI uri = exch.getRequestURI();
+    String urlkey = SmallServer.parseKeyFromQuery(uri.getQuery());
+
+    //response fields
+    int rescode = 200;
+    String restype = "";
     String resmsg = "";
-    if (query.length == 0) {
-        throw new URISyntaxException(method + " " + path, "400");
-    }
+
     if (method.equals("GET")) {
-        if (!query[0][0].equals("key")) {
-            throw new URISyntaxException(method + " " + path, "400");
-        }
-        byte[] value = kvStore.get(query[0][1]);
+        String value = kvStore.get(urlkey);
         if (value == null) {
-            throw new URISyntaxException(method + " " + path, "404");
+            rescode = 404;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setReplacedFlag(0);
+            resbody.setMessageString("error");
+            resbody.setErrorString("key does not exist");
+            resmsg = resbody.toJSON();
+        } else {
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setMessageString("success");
+            resbody.setValueString(value);
+            resmsg = resbody.toJSON();
         }
-        ResponseBody resbody = new ResponseBody(1, "success", null);
-        resmsg = resbody.toJSON();
-        System.out.println("resmsg: " + resmsg);
+    } else if (method.equals("PUT")) {
+        RequestBody reqbody = new RequestBody(exch.getRequestBody());
+        if (!SmallServer.keyIsValid(reqbody.key())) {
+            rescode = 400;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setMessageString("error");
+            resbody.setErrorString("key is invalid");
+            resmsg = resbody.toJSON();
+        } else if (reqbody.value() == null) {
+            rescode = 400;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setMessageString("error");
+            resbody.setErrorString("no value given");
+            resmsg = resbody.toJSON();
+        } else if (kvStore.get(reqbody.key()) == null) {
+            kvStore.put(reqbody.key(), reqbody.value());
+            rescode = 201;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setReplacedFlag(0);
+            resbody.setMessageString("success");
+            resmsg = resbody.toJSON();
+        } else {
+            kvStore.put(reqbody.key(), reqbody.value());
+            rescode = 200;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setReplacedFlag(1);
+            resbody.setMessageString("success");
+            resmsg = resbody.toJSON();
+        }
+    } else if (method.equals("DELETE")) {
+        String value = kvStore.get(urlkey);
+        if (value != null) {
+            kvStore.remove(urlkey);
+            rescode = 200;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setMessageString("success");
+            resmsg = resbody.toJSON();
+        } else {
+            rescode = 404;
+            restype = "application/json";
+            ResponseBody resbody = new ResponseBody();
+            resbody.setMessageString("error");
+            resbody.setErrorString("key does not exist");
+            resmsg = resbody.toJSON();
+        }
     } else {
-        throw new URISyntaxException(method + " " + path, "405");
+        rescode = 405;
+        resmsg = method + " " + uri + " not allowed";
     }
-    return resmsg;
+    sendResponse(exch, rescode, resmsg, restype);
 }
 
 private SmallServer()
 {
-    kvStore = new HashMap<String, byte[]>();
+    kvStore = new HashMap<String, String>();
 }
 
 public static void
@@ -154,6 +234,6 @@ main(String[] args) throws Exception
     server.start();
 }
 
-private HashMap<String, byte[]> kvStore;
+private HashMap<String, String> kvStore;
 
 }
