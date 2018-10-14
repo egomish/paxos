@@ -36,6 +36,6 @@ RUN set -eux; \
 
 EXPOSE 8080
 
-CMD ["sh"]
+CMD ["sh", "./runprog.sh"]
 
 ### end ESG ###
