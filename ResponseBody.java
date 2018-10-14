@@ -23,11 +23,6 @@ public void setValueString (String str)
     value = str;
 }
 
-public void setResponseBodyField (String name, String type)
-{
-    System.out.println("this function does nothing!!");
-}
-
 public String toJSON ()
 {
     Gson gson = new Gson();
