@@ -225,7 +225,7 @@ main(String[] args) throws Exception
 {
     int port = 8080;
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-    System.out.println("Server running on port " + port + ".");
+    System.err.println("Server running on port " + port + ".");
     server.createContext("/", new SmallServer());
     server.setExecutor(null); // creates a default executor
     server.start();
