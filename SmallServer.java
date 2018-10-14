@@ -105,8 +105,6 @@ private void doHello (HttpExchange exch)
     sendResponse(exch, rescode, resmsg, null);
 }
 
-//TODO: handle multiple queries for POST
-//      (split on '&', then split on '=')
 private void doTest (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
@@ -118,12 +116,11 @@ private void doTest (HttpExchange exch)
     if (method.equals("GET")) {
         resmsg = "GET request received";
     } else if (method.equals("POST")) {
-        String[] strarr = query.split("=");
-        if (strarr[0].equals("msg")) {
-            resmsg = "POST message received: " + strarr[1];
+        if (query == null) {
+            resmsg = "POST message received: null";
         } else {
-            rescode = 404;
-            resmsg = method + " " + path + " not found";
+            int eqindex = query.indexOf("=");
+            resmsg = "POST message received: " + query.substring(eqindex + 1);
         }
     } else {
         rescode = 405;
