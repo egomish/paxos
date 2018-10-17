@@ -1,3 +1,9 @@
+import java.net.URL;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ConnectException;
+import java.io.InputStream;
+
 import java.util.HashMap;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -215,6 +221,100 @@ private void doKVS (HttpExchange exch)
     sendResponse(exch, rescode, resmsg, restype);
 }
 
+private void sendMessageOnSubnet (int port, 
+                                  String method, 
+                                  String uri, 
+                                  String msg)
+{
+    URL url = null;
+    HttpURLConnection conn = null;
+    InputStream in = null;
+
+    //set URL
+    try {
+        url = new URL("http://localhost:" + port + uri);
+    } catch (MalformedURLException e) {
+        System.out.println("malformed url " + e.getMessage());
+        return;
+    }
+
+    //open connection to server
+    try {
+        conn = (HttpURLConnection)url.openConnection();
+    } catch (ConnectException e) {
+        System.out.println("server at " + port + uri + " is down");
+        System.out.println(e.getMessage());
+        return;
+    } catch (IOException e) {
+        System.out.println("I/O exception while opening connection.");
+        e.printStackTrace();
+        return;
+    }
+
+    //send request to server
+    try {
+        conn.setRequestMethod(method);
+        conn.connect();
+    } catch (ConnectException e) {
+        System.out.println("server at " + port + uri + " is down");
+        System.out.println(e.getMessage());
+        return;
+    } catch (IOException e) {
+        System.out.println("I/O exception while sending request.");
+        e.printStackTrace();
+        return;
+    }
+
+    //get response
+    try {
+        in = conn.getInputStream();
+    } catch (IOException e) {
+        System.out.println("I/O exception while getting response.");
+        System.out.println(e.getMessage());
+        //handle error based on rescode
+        //int rescode = conn.getResponseCode();
+        return;
+    }
+
+    //log response to STDOUT
+    try {
+        int b = in.read();
+        while (b != -1) {
+            System.out.print((char)b);
+            b = in.read();
+        }
+        System.out.println();
+    } catch (IOException e) {
+        System.out.println("I/O exception while reading response.");
+        e.printStackTrace();
+        return;
+    }
+}
+
+private void sendHelloWorld (int port)
+{
+    URL url = null;
+    HttpURLConnection conn = null;
+    try {
+        url = new URL("http://localhost:" + port + "/hello");
+        conn = (HttpURLConnection)url.openConnection();
+        conn.connect();
+        InputStream in = conn.getInputStream();
+        int b = in.read();
+        while (b != -1) {
+            System.out.print((char)b);
+            b = in.read();
+        }
+        System.out.println();
+    } catch (MalformedURLException e) {
+        System.out.println("bad url " + url);
+        System.exit(7);
+    } catch (IOException e) {
+        System.out.println("could not open connection to " + port + "/hello");
+        System.exit(7);
+    }
+}
+
 private SmallServer()
 {
     kvStore = new HashMap<String, String>();
@@ -224,11 +324,14 @@ public static void
 main(String[] args) throws Exception
 {
     int port = 8080;
+    SmallServer ss = new SmallServer();
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
     System.err.println("Server running on port " + port + ".");
-    server.createContext("/", new SmallServer());
+    server.createContext("/", ss);
     server.setExecutor(null); // creates a default executor
     server.start();
+    ss.sendHelloWorld(port);
+    ss.sendMessageOnSubnet(port, "POST", "/hello", "msg='BenderIsGreat'");
 }
 
 private HashMap<String, String> kvStore;
