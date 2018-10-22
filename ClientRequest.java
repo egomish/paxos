@@ -120,20 +120,22 @@ private boolean setURL (String urlstr)
         url = new URL("http://" + urlstr);
     } catch (MalformedURLException e) {
         System.out.println("malformed url: " + e.getMessage());
+        rescode = 400;
+        resbody = ResponseBody.clientError().toJSON();
         return false;
     }
     return true;
 }
 
-//XXX: rescode and resbody aren't set on every error
 private boolean doRequest (String method, String body)
 {
     //open connection
     try {
         conn = (HttpURLConnection)url.openConnection();
     } catch (IOException e) {
-        System.out.println("I/O exception while opening connection.");
-        e.printStackTrace();
+        System.out.println("could not connect: " + e.getMessage());
+        rescode = 400;
+        resbody = ResponseBody.clientError().toJSON();
         return false;
     }
 
@@ -141,6 +143,8 @@ private boolean doRequest (String method, String body)
         conn.setRequestMethod(method);
     } catch (ProtocolException e) {
         System.out.println("bad method: " + e.getMessage());
+        rescode = 400;
+        resbody = ResponseBody.clientError().toJSON();
         return false;
     }
 
@@ -154,8 +158,9 @@ private boolean doRequest (String method, String body)
             out.close();
         }
     } catch (IOException e) {
-        System.out.println("I/O exception while creating body.");
-        e.printStackTrace();
+        System.out.println("could not create body: " + e.getMessage());
+        rescode = 404;
+        resbody = ResponseBody.serverError().toJSON();
         return false;
     }
 
@@ -163,18 +168,20 @@ private boolean doRequest (String method, String body)
     try {
         conn.connect();
     } catch (ConnectException e) {
-        System.out.println("server at " + url + " is down");
-        System.out.println(e.getMessage());
+        System.out.println("server at " + url + " is down: " + e.getMessage());
+        rescode = 500;
+        resbody = ResponseBody.serverError().toJSON();
         return false;
     } catch (NoRouteToHostException e) {
-        System.out.println("server at " + url + " is not reachable by client");
-        System.out.println(e.getMessage());
+        System.out.println("server at " + url + " not reachable: " + e.getMessage());
         rescode = 404;
         resbody = ResponseBody.serverError().toJSON();
-        return true;
+        return false;
     } catch (IOException e) {
         System.out.println("I/O exception while sending request.");
         e.printStackTrace();
+        rescode = 500;
+        resbody = ResponseBody.serverError().toJSON();
         return false;
     }
     return true;
@@ -196,9 +203,9 @@ private boolean handleResponse ()
             in = conn.getErrorStream();
         }
     } catch (IOException e) {
-            System.out.println("rescode: " + rescode);
-            System.out.println("I/O exception while getting response.");
-            System.out.println(e.getMessage());
+            System.out.println("bad response body: " + e.getMessage());
+            rescode = 500;
+            resbody = ResponseBody.serverError().toJSON();
             return false;
     }
 
@@ -210,9 +217,9 @@ private boolean handleResponse ()
             b = in.read();
         }
     } catch (IOException e) {
-        System.out.println("I/O exception while reading response.");
-        e.printStackTrace();
-        resbody = null;
+        System.out.println("could not read response body: " + e.getMessage());
+        rescode = 500;
+        resbody = ResponseBody.serverError().toJSON();
         return false;
     }
     return true;

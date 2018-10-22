@@ -11,6 +11,14 @@ public static ResponseBody serverError ()
     return body;
 }
 
+public static ResponseBody clientError ()
+{
+    ResponseBody body = new ResponseBody();
+    body.setMessageString("error");
+    body.setErrorString("unable to process request");
+    return body;
+}
+
 public void setReplacedFlag (int n)
 {
     replaced = new Integer(n);

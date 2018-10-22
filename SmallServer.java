@@ -14,6 +14,13 @@ public class SmallServer implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
+    System.err.println("Handling " + exch.getRequestMethod() + " request...");
+    if (!isPrimary) {
+        HttpResponse response = forwardRequestToPrimary(exch);
+        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
+        return;
+    }
+
     String path = exch.getRequestURI().getPath();
     if (path.startsWith("/hello")) {
         doHello(exch);
@@ -68,6 +75,18 @@ private static boolean keyIsValid (String key)
     return true;
 }
 
+private HttpResponse forwardRequestToPrimary (HttpExchange exch)
+{
+    String method = exch.getRequestMethod();
+    String path = exch.getRequestURI().getPath();
+    String query = exch.getRequestURI().getQuery();
+    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+    HttpResponse response = ClientRequest.sendRequest(primaryIPAddress, method, path, query, reqbody);
+    return response;
+}
+
+//XXX: exceptions are caught here regardless of type
+//XXX: on any failure, server is stopped
 private void sendResponse (HttpExchange exch, 
                            int rescode, 
                            String resmsg, 
@@ -75,7 +94,7 @@ private void sendResponse (HttpExchange exch,
 {
     try {
         String method = exch.getRequestMethod();
-        System.err.println("Responding to " + method + " with " + rescode);
+        System.err.println("Responding to " + method + " with " + rescode + ".");
         if (restype != null) {
             exch.getResponseHeaders().set("Content-Type", restype);
         }
@@ -217,7 +236,16 @@ private void doKVS (HttpExchange exch)
 
 private SmallServer()
 {
-    kvStore = new HashMap<String, String>();
+    String mainip = System.getenv().get("MAINIP");
+    if (mainip == null) {
+        primaryIPAddress = null;
+        isPrimary = true;
+        kvStore = new HashMap<String, String>();
+    } else {
+        primaryIPAddress = mainip;
+        isPrimary = false;
+        kvStore = null;
+    }
 }
 
 public static void
@@ -231,6 +259,8 @@ main(String[] args) throws Exception
     server.start();
 }
 
+private String primaryIPAddress;
+private boolean isPrimary;
 private HashMap<String, String> kvStore;
 
 }
