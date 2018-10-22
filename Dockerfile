@@ -1,12 +1,5 @@
 FROM alpine:3.8
 
-### begin ESG ###
-
-WORKDIR /data
-COPY . /data
-
-### end ESG ###
-
 ENV JAVA_HOME /opt/openjdk-12
 ENV PATH $JAVA_HOME/bin:$PATH
 
@@ -33,6 +26,9 @@ RUN set -eux; \
         javac --version
 
 ### begin ESG ###
+
+WORKDIR /data
+COPY . /data
 
 EXPOSE 8080
 
