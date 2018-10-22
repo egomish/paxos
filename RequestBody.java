@@ -1,4 +1,5 @@
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
 import java.util.HashMap;
@@ -22,7 +23,7 @@ public String value ()
 {
     return kvPairs.get("value");
 }
-private String getBodyAsQuery (InputStream reqin)
+private String getRequestBody (InputStream reqin)
 {
     String body = "";
     try {
@@ -38,7 +39,7 @@ private String getBodyAsQuery (InputStream reqin)
     return body;
 }
 
-//XXX: all values are assumed to be type String
+//XXX: query format is assumed to be form-urlencoded
 private String queryToJSON (String query)
 {
     String json = "";
@@ -59,9 +60,18 @@ public RequestBody (InputStream reqin)
 {
     Gson gson = new Gson();
     Type type = new TypeToken<HashMap<String, String>>(){}.getType();
-    String query = getBodyAsQuery(reqin);
-    String json = queryToJSON(query);
-    kvPairs = gson.fromJson(json, type);
+    String reqbody = getRequestBody(reqin);
+    try {
+        kvPairs = gson.fromJson(reqbody, type);
+    } catch (JsonSyntaxException e) {
+        String json = queryToJSON(reqbody);
+        try {
+            kvPairs = gson.fromJson(json, type);
+        } catch (JsonSyntaxException e2) {
+            System.out.println("unknown request body syntax " + reqbody);
+            kvPairs = null;
+        }
+    }
 }
 
 
