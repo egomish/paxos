@@ -68,7 +68,7 @@ public RequestBody (InputStream reqin)
         try {
             kvPairs = gson.fromJson(json, type);
         } catch (JsonSyntaxException e2) {
-            System.out.println("unknown request body syntax " + reqbody);
+            System.err.println("unknown request body syntax " + reqbody);
             kvPairs = null;
         }
     }
