@@ -7,7 +7,7 @@ import time
 import urllib
 
 hostname = 'localhost'  # Windows and Mac users can change this to the docker vm ip
-contname = 'cmps128_hw2'  # Set your container name here
+contname = 'assignment2'  # Set your container name here
 sudo = ''  # Make the value of this variable sudo if you need sudo to start containers
 
 def decode(str):

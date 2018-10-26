@@ -1,1 +1,1 @@
-docker build -t cmps128_hw2 .
+docker build -t assignment2 .
