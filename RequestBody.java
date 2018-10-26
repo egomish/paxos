@@ -62,15 +62,18 @@ public RequestBody (InputStream reqin)
     Gson gson = new Gson();
     Type type = new TypeToken<HashMap<String, String>>(){}.getType();
     String reqbody = getRequestBody(reqin);
-    try {
-        kvPairs = gson.fromJson(reqbody, type);
-    } catch (JsonSyntaxException e) {
-        String json = queryToJSON(reqbody);
+
+    kvPairs = new HashMap<String, String>();
+    if (reqbody.length() != 0) {
         try {
-            kvPairs = gson.fromJson(json, type);
-        } catch (JsonSyntaxException e2) {
-            System.err.println("unknown request body syntax " + reqbody);
-            kvPairs = null;
+            kvPairs = gson.fromJson(reqbody, type);
+        } catch (JsonSyntaxException e) {
+            String json = queryToJSON(reqbody);
+            try {
+                kvPairs = gson.fromJson(json, type);
+            } catch (JsonSyntaxException e2) {
+                System.err.println("unknown request body syntax " + reqbody);
+            }
         }
     }
 }
