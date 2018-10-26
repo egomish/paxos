@@ -38,6 +38,33 @@ public void setDebugString (String str)
     debug = str;
 }
 
+
+public void setReplacedFlag (int n)
+{
+    replaced = n;
+}
+
+public void setMessageString (String str)
+{
+    msg = str;
+}
+
+public void setValueString (String str)
+{
+    value = str;
+}
+
+public void setErrorString (String str)
+{
+    error = str;
+}
+
+public void setExistFlag (String str)
+{
+    isExist = str;
+}
+
+
 public String toJSON ()
 {
     Gson gson = new Gson();
@@ -67,6 +94,12 @@ public ResponseBody ()
     success = null;
     info = null;
     debug = null;
+
+    replaced = null;
+    msg = null;
+    value = null;
+    error = null;
+    isExist = null;
 }
 
 public ResponseBody (boolean succ, String msg)
@@ -74,10 +107,22 @@ public ResponseBody (boolean succ, String msg)
     success = succ;
     info = msg;
     debug = null;
+
+    replaced = null;
+    msg = null;
+    value = null;
+    error = null;
+    isExist = null;
 }
 
 private Boolean success;
 private String info;
 private String debug;
+
+private Integer replaced;
+private String msg;
+private String value;
+private String error;
+private String isExist;
 
 }

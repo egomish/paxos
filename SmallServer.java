@@ -192,9 +192,14 @@ private void doKVS (HttpExchange exch)
             if (value != null) {
                 rescode = 200;
                 resbody.setResult(true, "key exists");
+                resbody.setMessageString("Success");
+                resbody.setExistFlag("true");
             } else {
                 rescode = 404;
                 resbody.setResult(false, "key does not exist");
+                resbody.setMessageString("Error");
+                resbody.setErrorString("Key does not exist");
+                resbody.setExistFlag("false");
             }
             resmsg = resbody.toJSON();
         }
@@ -205,10 +210,14 @@ private void doKVS (HttpExchange exch)
                 rescode = 404;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(false, "key does not exist");
+                resbody.setMessageString("Error");
+                resbody.setErrorString("Key does not exist");
                 resmsg = resbody.toJSON();
             } else {
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(true, value);
+                resbody.setMessageString("Success");
+                resbody.setValueString(value);
                 resmsg = resbody.toJSON();
             }
         } else if (method.equals("PUT")) {
@@ -217,17 +226,23 @@ private void doKVS (HttpExchange exch)
                 rescode = 422;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(false, "key is invalid");
+                resbody.setMessageString("Error");
+                resbody.setErrorString("Key not valid");
                 resmsg = resbody.toJSON();
             } else if (!SmallServer.valueIsValid(reqvalue)) {
                 rescode = 422;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(false, "value is invalid");
+                resbody.setMessageString("Error");
+                resbody.setErrorString("Value is missing");
                 resmsg = resbody.toJSON();
             } else if (kvStore.get(urlkey) == null) {
                 kvStore.put(urlkey, reqvalue);
                 rescode = 201;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(true, "key added");
+                resbody.setReplacedFlag(0);
+                resbody.setMessageString("Added successfully");
                 resmsg = resbody.toJSON();
             } else {
                 kvStore.put(urlkey, reqvalue);
@@ -235,6 +250,8 @@ private void doKVS (HttpExchange exch)
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(true, "key updated");
                 resbody.setDebugString(reqvalue);
+                resbody.setMessageString("Updated successfully");
+                resbody.setReplacedFlag(1);
                 resmsg = resbody.toJSON();
             }
         } else if (method.equals("DELETE")) {
@@ -244,11 +261,14 @@ private void doKVS (HttpExchange exch)
                 rescode = 200;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(true, "key deleted");
+                resbody.setMessageString("Success");
                 resmsg = resbody.toJSON();
             } else {
                 rescode = 404;
                 restype = "application/json";
                 ResponseBody resbody = new ResponseBody(false, "key does not exist");
+                resbody.setMessageString("Error");
+                resbody.setErrorString("Key does not exist");
                 resmsg = resbody.toJSON();
             }
         } else {
