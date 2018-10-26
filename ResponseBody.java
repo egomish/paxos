@@ -6,37 +6,36 @@ public class ResponseBody {
 public static ResponseBody serverError ()
 {
     ResponseBody body = new ResponseBody();
-    body.setMessageString("error");
-    body.setErrorString("service is not available");
+    body.setResult(false, "service is not available");
     return body;
 }
 
 public static ResponseBody clientError ()
 {
     ResponseBody body = new ResponseBody();
-    body.setMessageString("error");
-    body.setErrorString("unable to process request");
+    body.setResult(false, "unable to process request");
     return body;
 }
 
-public void setReplacedFlag (int n)
+public void setResult (boolean succ, String msg)
 {
-    replaced = new Integer(n);
+    success = succ;
+    info = msg;
 }
 
-public void setMessageString (String str)
+public void setSuccessFlag (boolean flag)
 {
-    msg = str;
+    success = flag;
 }
 
-public void setErrorString (String str)
+public void setInfoString (String str)
 {
-    error = str;
+    info = str;
 }
 
-public void setValueString (String str)
+public void setDebugString (String str)
 {
-    value = str;
+    debug = str;
 }
 
 public String toJSON ()
@@ -65,15 +64,20 @@ public static ResponseBody fromJSON (String json)
 
 public ResponseBody ()
 {
-    replaced = null;
-    msg = null;
-    error = null;
-    value = null;
+    success = null;
+    info = null;
+    debug = null;
 }
 
-private Integer replaced;
-private String msg;
-private String error;
-private String value;
+public ResponseBody (boolean succ, String msg)
+{
+    success = succ;
+    info = msg;
+    debug = null;
+}
+
+private Boolean success;
+private String info;
+private String debug;
 
 }

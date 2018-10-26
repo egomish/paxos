@@ -21,8 +21,9 @@ public String key ()
 
 public String value ()
 {
-    return kvPairs.get("value");
+    return kvPairs.get("val");
 }
+
 private String getRequestBody (InputStream reqin)
 {
     String body = "";

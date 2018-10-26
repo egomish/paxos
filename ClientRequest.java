@@ -159,7 +159,7 @@ private boolean doRequest (String method, String body)
         }
     } catch (IOException e) {
         System.err.println("could not create body: " + e.getMessage());
-        rescode = 404;
+        rescode = 500;
         resbody = ResponseBody.serverError().toJSON();
         return false;
     }
@@ -169,12 +169,12 @@ private boolean doRequest (String method, String body)
         conn.connect();
     } catch (ConnectException e) {
         System.err.println("server at " + url + " is down: " + e.getMessage());
-        rescode = 500;
+        rescode = 501;
         resbody = ResponseBody.serverError().toJSON();
         return false;
     } catch (NoRouteToHostException e) {
         System.err.println("server at " + url + " not reachable: " + e.getMessage());
-        rescode = 404;
+        rescode = 501;
         resbody = ResponseBody.serverError().toJSON();
         return false;
     } catch (IOException e) {
@@ -194,6 +194,13 @@ private boolean handleResponse ()
     //get response
     try {
         rescode = conn.getResponseCode();
+    } catch (IOException e) {
+        System.err.println("bad rescode while handling response to " + url);
+        rescode = 500;
+        resbody = ResponseBody.serverError().toJSON();
+        return false;
+    }
+    try {
         headers = conn.getHeaderFields();
         if ((200 <= rescode) && (rescode < 300)) {
             in = conn.getInputStream();
@@ -204,6 +211,7 @@ private boolean handleResponse ()
         }
     } catch (IOException e) {
             System.err.println("bad response body: " + e.getMessage());
+            e.printStackTrace();
             rescode = 500;
             resbody = ResponseBody.serverError().toJSON();
             return false;

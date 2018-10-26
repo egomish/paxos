@@ -26,27 +26,34 @@ public void handle (HttpExchange exch) throws IOException
         doHello(exch);
     } else if (path.startsWith("/test")) {
         doTest(exch);
-    } else if (path.startsWith("/kvs")) {
+    } else if (path.startsWith("/keyValue-store")) {
         doKVS(exch);
     } else {
-        String method = exch.getRequestMethod();
-        sendResponse(exch, 404, "", method + " " + path + " not found");
+        int rescode = 404;
+        String restype = "application/json";
+        String resmsg = ResponseBody.clientError().toJSON();
+        sendResponse(exch, rescode, resmsg, restype);
     }
 }
 
-private static String parseKeyFromQuery (String query)
+//XXX: if key contains '/' characters, key will be parsed as just the 
+//     characters following the final slash in the key
+private static String parseKeyFromPath (String path)
 {
-    if (query == null) {
+    if (path == null) {
         return null;
     }
-    String[] pairs = query.split("&");
-    for (int i = 0; i < pairs.length; i += 1) {
-        String[] split = pairs[i].split("=");
-        if (split[0].equals("key")) {
-            return split[1];
-        }
-    }
-    return null;
+    String[] strarr = path.split("/");
+    String key = strarr[strarr.length - 1];
+    //make sure key is actually the whole key
+    return key;
+}
+
+private static String parseValueFromRequest (HttpExchange exch)
+{
+    RequestBody reqbody = new RequestBody(exch.getRequestBody());
+    String value = reqbody.value();
+    return value;
 }
 
 private static boolean keyIsValid (String key)
@@ -54,7 +61,7 @@ private static boolean keyIsValid (String key)
     if (key.length() == 0) {
         return false;
     }
-    if (key.length() > 250) {
+    if (key.length() > 200) {
         return false;
     }
     for (int i = 0; i < key.length(); i += 1) {
@@ -70,6 +77,16 @@ private static boolean keyIsValid (String key)
         if (key.charAt(i) == '_') {
             continue;
         }
+        return false;
+    }
+    return true;
+}
+
+private static boolean valueIsValid (String value)
+{
+    if (value == null) {
+        return false;
+    } else if (value.getBytes().length > 1000000) {
         return false;
     }
     return true;
@@ -153,83 +170,91 @@ private void doKVS (HttpExchange exch)
     //request fields
     String method = exch.getRequestMethod();
     URI uri = exch.getRequestURI();
-    String urlkey = SmallServer.parseKeyFromQuery(uri.getQuery());
+    String urlkey = parseKeyFromPath(uri.getPath());
 
     //response fields
     int rescode = 200;
     String restype = "";
     String resmsg = "";
 
-    if (method.equals("GET")) {
-        String value = kvStore.get(urlkey);
-        if (value == null) {
-            rescode = 404;
+    String subpath = uri.getPath().substring(16); //subtract "/keyValue-store/"
+    if (subpath.startsWith("search/")) {
+        String subsubpath = subpath.substring(7); //subtract "search/"
+        if (!method.equals("GET")) {
+            rescode = 405;
             restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setReplacedFlag(0);
-            resbody.setMessageString("error");
-            resbody.setErrorString("key does not exist");
+            ResponseBody resbody = new ResponseBody(false, "method not allowed");
             resmsg = resbody.toJSON();
         } else {
             restype = "application/json";
             ResponseBody resbody = new ResponseBody();
-            resbody.setMessageString("success");
-            resbody.setValueString(value);
-            resmsg = resbody.toJSON();
-        }
-    } else if (method.equals("PUT")) {
-        RequestBody reqbody = new RequestBody(exch.getRequestBody());
-        if (!SmallServer.keyIsValid(reqbody.key())) {
-            rescode = 400;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setMessageString("error");
-            resbody.setErrorString("key is invalid");
-            resmsg = resbody.toJSON();
-        } else if (reqbody.value() == null) {
-            rescode = 400;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setMessageString("error");
-            resbody.setErrorString("no value given");
-            resmsg = resbody.toJSON();
-        } else if (kvStore.get(reqbody.key()) == null) {
-            kvStore.put(reqbody.key(), reqbody.value());
-            rescode = 201;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setReplacedFlag(0);
-            resbody.setMessageString("success");
-            resmsg = resbody.toJSON();
-        } else {
-            kvStore.put(reqbody.key(), reqbody.value());
-            rescode = 200;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setReplacedFlag(1);
-            resbody.setMessageString("success");
-            resmsg = resbody.toJSON();
-        }
-    } else if (method.equals("DELETE")) {
-        String value = kvStore.get(urlkey);
-        if (value != null) {
-            kvStore.remove(urlkey);
-            rescode = 200;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setMessageString("success");
-            resmsg = resbody.toJSON();
-        } else {
-            rescode = 404;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
-            resbody.setMessageString("error");
-            resbody.setErrorString("key does not exist");
+            String value = kvStore.get(urlkey);
+            if (value != null) {
+                rescode = 200;
+                resbody.setResult(true, "key exists");
+            } else {
+                rescode = 404;
+                resbody.setResult(false, "key does not exist");
+            }
             resmsg = resbody.toJSON();
         }
     } else {
-        rescode = 405;
-        resmsg = method + " " + uri + " not allowed";
+        if (method.equals("GET")) {
+            String value = kvStore.get(urlkey);
+            if (value == null) {
+                rescode = 404;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(false, "key does not exist");
+                resmsg = resbody.toJSON();
+            } else {
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(true, value);
+                resmsg = resbody.toJSON();
+            }
+        } else if (method.equals("PUT")) {
+            String reqvalue = parseValueFromRequest(exch);
+            if (!SmallServer.keyIsValid(urlkey)) {
+                rescode = 422;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(false, "key is invalid");
+                resmsg = resbody.toJSON();
+            } else if (!SmallServer.valueIsValid(reqvalue)) {
+                rescode = 422;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(false, "value is invalid");
+                resmsg = resbody.toJSON();
+            } else if (kvStore.get(urlkey) == null) {
+                kvStore.put(urlkey, reqvalue);
+                rescode = 201;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(true, "key added");
+                resmsg = resbody.toJSON();
+            } else {
+                kvStore.put(urlkey, reqvalue);
+                rescode = 200;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(true, "key updated");
+                resbody.setDebugString(reqvalue);
+                resmsg = resbody.toJSON();
+            }
+        } else if (method.equals("DELETE")) {
+            String value = kvStore.get(urlkey);
+            if (value != null) {
+                kvStore.remove(urlkey);
+                rescode = 200;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(true, "key deleted");
+                resmsg = resbody.toJSON();
+            } else {
+                rescode = 404;
+                restype = "application/json";
+                ResponseBody resbody = new ResponseBody(false, "key does not exist");
+                resmsg = resbody.toJSON();
+            }
+        } else {
+            rescode = 405;
+            resmsg = method + " " + uri + " not allowed";
+        }
     }
     sendResponse(exch, rescode, resmsg, restype);
 }
