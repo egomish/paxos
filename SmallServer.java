@@ -1,7 +1,9 @@
 import java.util.HashMap;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.InetSocketAddress;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -49,10 +51,26 @@ private static String parseKeyFromPath (String path)
     return key;
 }
 
+//XXX: only handles requests with no content type or form-urlecoded
+//     assumes that if there is an encoding, only the first one matters
 private static String parseValueFromRequest (HttpExchange exch)
 {
     RequestBody reqbody = new RequestBody(exch.getRequestBody());
     String value = reqbody.value();
+
+    String contenttype = exch.getRequestHeaders().getFirst("Content-type");
+    if (contenttype != null) {
+        if (contenttype.equals("application/x-www-form-urlencoded")) {
+            try {
+                value = URLDecoder.decode(value, "UTF-8");
+            } catch (UnsupportedEncodingException e) {
+                System.err.println("bad encoding: " + e.getMessage());
+            }
+        } else {
+            System.out.println("the content type is " + contenttype);
+        }
+    }
+
     return value;
 }
 
