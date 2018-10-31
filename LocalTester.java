@@ -6,6 +6,16 @@ main (String[] args)
 {
     HttpResponse response;
 
+//put bad key "foo"=null
+    System.out.println("foo=NULL: ");
+    String service = "/keyValue-store/";
+    System.out.println("service: " + service);
+    response = ClientRequest.sendRequest("localhost:8080",
+                                         "PUT", service, null, 
+                                         "{'val':'no key'}");
+    System.out.println("8080: " + response.getResponseBody());
+
+/*
 //hello world
     System.out.println("hello world: ");
     response = ClientRequest.sendRequest("localhost:8080",
@@ -51,7 +61,6 @@ main (String[] args)
                                          "GET", "/keyValue-store/foo", null,
                                          null);
     System.out.println("8080: " + response.getResponseBody());
-System.exit(0);
 
 //get non-existent key "faa"
     System.out.println("faa=?: ");
@@ -59,6 +68,7 @@ System.exit(0);
                                          "GET", "/keyValue-store/faa", null,
                                          null);
     System.out.println("8080: " + response.getResponseBody());
+*/
 
 }
 
