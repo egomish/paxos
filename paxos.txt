@@ -1,0 +1,218 @@
+public class Paxos {
+
+
+public Proposal receiveProposal (Message msg)
+{
+    if (msg.sequenceNumber.equals("recon")) {
+        //return latest seen proposal
+        return acceptedProposal;
+    } else {
+        //vote on proposal
+        return getConsensus();
+    }
+}
+
+//do recon to get latest proposal
+//propagate latest proposal
+//recurse until consensus
+public Proposal getConsensus ()
+{
+    //do recon
+    Response recon = doRecon();
+    if (recon.latestProposal() == null) {
+        //no nodes have accepted proposals
+        acceptedProposal = Paxos.defaultProposal();
+    }
+    if (recon.latestProposal() < acceptedProposal) {
+        acceptedProposal = recon.latestProposal();
+    }
+
+    //propagate proposal
+    Response res = sendProposal(acceptedProposal);
+    if (res.atLeastOneNo()) {
+        //there's a problem with the proposal--discard it
+        acceptedProposal = null;
+    } else if (res.majorityYes()) {
+        //consensus--commit the proposal
+        acceptedProposal = res.proposal();
+        return acceptedProposal;
+    }
+    return getConsensus();
+}
+
+public Response doRecon ()
+{
+    Message msg = new Message("recon", null);
+    Timeout timeout = new Timeout();
+    Response res = sendMessage(msg, timeout);
+    return res;
+}
+
+//uses reliable broadcast to solicit votes from other nodes
+public Response sendProposal (Proposal prop)
+{
+    //create proposal number from sequence number and pid
+    //attach proposal number to message
+    //set timeout to wait for responses
+    //broadcast packet containing message 
+        //until timeout expires 
+        //or until all messages are responded to
+    //return response (proposal under vote and results from nodes)
+
+    String seq = proposalSequence + "." + pid;
+    Message msg = new Message(number, acceptedProposal);
+    Timeout timeout = new Timeout();
+    Response res = sendMessage(msg, timeout);
+    return res;
+}
+
+public void addProposal (List<Proposal> prop)
+{
+    if (prop == null) {
+        //no nodes have accepted proposals
+        prop = Paxos.defaultProposal();
+    }
+
+    //do merge sort on prop into seenProposals 
+    //so proposals are ordered by sequence number
+    seenProposals = mergesort(seenProposals, prop);
+}
+
+public Proposal latestProposal ()
+{
+    //return proposal with latest sequence number
+}
+
+public static Proposal defaultProposal ()
+{
+    //follow default behavior for type of consensus being sought
+    proposalSequence += 1;
+    return new Proposal();
+}
+
+public Paxos ()
+{
+    seenProposals = new List<Proposal>();
+    acceptedProposal = null;
+    proposalSequence = 0;
+    pid = Random.nextInt(5);
+}
+
+
+private List<Proposal> seenProposals;
+private Proposal acceptedProposal;
+private int proposalSequence;
+private int pid;
+
+//----------------------------------------------------------------
+
+public class Response {
+
+
+//returns true if any node voted 'no'
+public boolean atLeastOneNo ()
+{
+    for (ResMessage res : resMsgs) {
+        if (res == null) {
+            continue;
+        }
+        if (res.voteOfNode == false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+//returns true if a majority of nodes responded with vote 'yes'
+//                and no node voted 'no'
+public boolean majorityYes ()
+{
+    int yesvotes = 0;
+    for (ResMessage res : resMsgs) {
+        if (res == null) {
+            continue;
+        }
+        if (res.voteOfNode == false) {
+            return false;
+        }
+        yesvotes +=1;
+    }
+    if (yesvotes < (resMsgs.size() / 2) + 1) {
+        return false;
+    }
+    return true;
+}
+
+public Proposal latestProposal ()
+{
+    Proposal latestprop = null;
+    String seqnum = "0.0";
+    for (res : resMsgs) {
+        if (res == null) {
+            continue;
+        }
+        if (res.sequenceNumber > seqnum) {
+            latestprop = res.proposalUnderVote;
+        }
+    }
+    return latestprop;
+}
+
+ArrayList<ResMessage> resMsgs;
+
+}
+
+//----------------------------------------------------------------
+
+public class ResMessage {
+
+
+public String sequenceNumber;
+public Proposal proposalUnderVote;
+public boolean voteOfNode;
+
+
+}
+
+//----------------------------------------------------------------
+
+public class Message {
+
+
+public String sequenceNumber;
+public Proposal proposalUnderVote;
+
+public Message (String seqnum, Proposal prop)
+{
+    sequenceNumber = seqnum;
+    proposalUnderVote = prop;
+}
+
+
+}
+
+//----------------------------------------------------------------
+
+public class ResMessage {
+
+
+public String sequenceNumber;
+public Proposal proposalUnderVote;
+public boolean voteOfNode;
+
+public Message ()
+{
+    sequenceNumber = "recon";
+    proposalUnderVote = null;
+}
+
+public Message (String seqnum, Proposal prop)
+{
+    sequenceNumber = seqnum;
+    proposalUnderVote = prop;
+}
+
+
+}
+
+}

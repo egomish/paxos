@@ -1,3 +1,8 @@
+import java.util.Random;
+
+
+
+
 import java.util.HashMap;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -122,7 +127,7 @@ private HttpResponse forwardRequestToPrimary (HttpExchange exch)
 
 //XXX: exceptions are caught here regardless of type
 //XXX: on any failure, server is stopped
-private void sendResponse (HttpExchange exch, 
+public void sendResponse (HttpExchange exch, 
                            int rescode, 
                            String resmsg, 
                            String restype)
@@ -297,7 +302,7 @@ private void doKVS (HttpExchange exch)
     sendResponse(exch, rescode, resmsg, restype);
 }
 
-private SmallServer()
+public SmallServer()
 {
     String mainip = System.getenv().get("MAINIP");
     if (mainip == null) {
@@ -317,7 +322,9 @@ main(String[] args) throws Exception
     int port = 8080;
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
     System.err.println("Server running on port " + port + ".");
-    server.createContext("/", new SmallServer());
+    Random rand = new Random();
+    String[] nodes = {"localhost:8080"};
+    server.createContext("/", new PaxosServer(rand.nextInt(5), nodes));
     server.setExecutor(null); // creates a default executor
     server.start();
 }
