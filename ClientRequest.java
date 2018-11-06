@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.util.Map;
 import java.util.List;
+import java.util.ArrayList;
 
 public class ClientRequest {
 
@@ -81,6 +82,20 @@ public static HttpResponse sendDeleteRequest (String ip,
                                         String body)
 {
     return sendRequest(ip, "DELETE", service, query, body);
+}
+
+public static HttpResponse[] sendBroadcastRequest (String[] nodeips, 
+                                                   String method, 
+                                                   String service, 
+                                                   String query, 
+                                                   String body)
+{
+    ArrayList<HttpResponse> responses = new ArrayList<HttpResponse>();
+    for (String ip : nodeips) {
+        HttpResponse res = sendRequest(ip, method, service, query, body);
+        responses.add(res);
+    }
+    return responses.toArray(new HttpResponse[0]);
 }
 
 public static HttpResponse sendRequest (String ip, 
