@@ -92,9 +92,18 @@ public static HttpResponse[] sendBroadcastRequest (String[] nodeips,
 {
     ArrayList<HttpResponse> responses = new ArrayList<HttpResponse>();
     for (String ip : nodeips) {
+        System.out.println("sending to " + ip);
         HttpResponse res = sendRequest(ip, method, service, query, body);
+        //XXX: when a process sends a message to itself, it blocks forever
+        //TODO: spawn a new process to handle requests in SmallServer.handle()
         responses.add(res);
     }
+    System.out.print("returning: ");
+    for (HttpResponse res : responses) {
+        System.out.print(res.getResponseCode() + ": ");
+        System.out.print(res.getResponseBody() + ": ");
+    }
+    System.out.println();
     return responses.toArray(new HttpResponse[0]);
 }
 

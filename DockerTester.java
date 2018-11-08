@@ -5,7 +5,7 @@ public static void
 main (String[] args)
 {
 //broadcast hello world
-    String[] nodes = {"localhost:4001", "localhost:4002", "localhost:4003"};
+    String[] nodes = {"10.0.0.41:8080", "10.0.0.42:8080"};
     HttpResponse[] responses;
     responses = ClientRequest.sendBroadcastRequest(nodes, 
                                                    "GET", "/hello", null, 
@@ -14,6 +14,13 @@ main (String[] args)
         HttpResponse response = responses[i];
         System.out.println(nodes[i] + ": " + responses[i].getResponseBody());
     }
+
+//attempt paxos
+    HttpResponse response;
+    response = ClientRequest.sendRequest(nodes[0],
+                                          "POST", "/paxos/proposer", null, 
+                                          null);
+    System.out.println(nodes[0] + ": " + response.getResponseBody());
 }
 
 
