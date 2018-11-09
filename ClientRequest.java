@@ -55,35 +55,6 @@ public static String inputStreamToString (InputStream in)
     return str;
 }
 
-public static HttpResponse sendGetRequest (String ip, String service, String query)
-{
-    return sendRequest(ip, "GET", service, query, null);
-}
-
-public static HttpResponse sendPostRequest (String ip, 
-                                      String service, 
-                                      String query, 
-                                      String body)
-{
-    return sendRequest(ip, "POST", service, query, body);
-}
-
-public static HttpResponse sendPutRequest (String ip, 
-                                     String service, 
-                                     String query, 
-                                     String body)
-{
-    return sendRequest(ip, "PUT", service, query, body);
-}
-
-public static HttpResponse sendDeleteRequest (String ip, 
-                                        String service, 
-                                        String query,
-                                        String body)
-{
-    return sendRequest(ip, "DELETE", service, query, body);
-}
-
 public static HttpResponse[] sendBroadcastRequest (String[] nodeips, 
                                                    String method, 
                                                    String service, 
