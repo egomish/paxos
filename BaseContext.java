@@ -4,6 +4,11 @@ import com.sun.net.httpserver.HttpExchange;
 
 public abstract class BaseContext {
 
+public String[] getNodeView ()
+{
+    return nodeView;
+}
+
 protected HttpResponse forwardRequestToPrimary (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
@@ -49,6 +54,7 @@ protected BaseContext()
     }
 }
 
+protected String[] nodeView;
 protected String primaryIPAddress;
 protected boolean isPrimary;
 

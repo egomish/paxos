@@ -16,6 +16,8 @@ main(String[] args) throws Exception
     server.createContext("/hello", new ContextHello());
     server.createContext("/test", new ContextTest());
     server.createContext("/keyValue-store", new ContextKVS());
+    server.createContext("/paxos/proposer", new ContextPaxosProposer());
+    server.createContext("/paxos/acceptor", new ContextPaxosAcceptor());
     server.setExecutor(null); // creates a default executor
     server.start();
 }
