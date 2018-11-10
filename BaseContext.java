@@ -66,9 +66,22 @@ protected BaseContext()
             nodeView[i] += ":8080";
         }
     }
+
+    String pid = System.getenv().get("PID");
+    if (pid == null) {
+        processID = 0;
+    } else {
+        try {
+            processID = Integer.parseInt(pid);
+        } catch (NumberFormatException e) {
+            System.err.println("bad pid " + pid);
+            processID = 0;
+        }
+    }
 }
 
 protected String[] nodeView;
+protected int processID;
 protected String primaryIPAddress;
 protected boolean isPrimary;
 

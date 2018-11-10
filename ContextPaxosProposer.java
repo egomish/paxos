@@ -10,7 +10,6 @@ public class ContextPaxosProposer extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("[PaxosProposer] Handling " + exch.getRequestMethod() + " request...");
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
@@ -31,6 +30,7 @@ public void handle (HttpExchange exch) throws IOException
 
 private void doPaxosProposer (HttpExchange exch)
 {
+    //XXX: in a production system, this string would be sanitized
     String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
 
     int rescode;
@@ -40,18 +40,21 @@ private void doPaxosProposer (HttpExchange exch)
     theProposal.incrementSequenceNumber();
     theProposal.setAcceptedValue(reqbody);
 
+    System.out.println("sending prepare...");
     //prepare
     String value = sendPrepare(theProposal);
     if (value != null) {
         theProposal.setAcceptedValue(value);
     } else {
         //set the value in theProposal to incoming argument
-        theProposal.setAcceptedValue("this is a placeholder value");
+        theProposal.setAcceptedValue(reqbody);
     }
 
+    System.out.println("sending accept...");
     //accept
     int seqnum = sendAccept(theProposal);
 
+    System.out.println("sending commit...");
     //commit
     if (seqnum == theProposal.getSequenceNumber()) {
         boolean success = sendCommit(theProposal);
@@ -84,6 +87,8 @@ private String sendPrepare (PaxosProposal prop)
     String reqbody;
     reqbody = prop.toJSON();
 
+    System.out.println("sending proposal " + reqbody);
+    //TODO: replae ClientRequest with Client
     HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/acceptor/prepare", null, reqbody);
     for (HttpResponse res : responses) {
         PaxosProposal resprop = PaxosProposal.fromJSON(res.getResponseBody());
@@ -126,7 +131,7 @@ private boolean sendCommit (PaxosProposal prop)
 
 protected ContextPaxosProposer ()
 {
-    theProposal = new PaxosProposal();
+    theProposal = new PaxosProposal(this.processID);
 }
 
 
