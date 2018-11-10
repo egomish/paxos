@@ -85,7 +85,6 @@ public static HttpResponse sendDeleteRequest (String ip,
 }
 
 //TODO: make broadcast multithreaded
-//HERE
 public static HttpResponse[] sendBroadcastRequest (String[] nodeips, 
                                                    String method, 
                                                    String service, 

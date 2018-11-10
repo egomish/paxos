@@ -77,7 +77,6 @@ public String toJSON ()
 //XXX: when the arg isn't JSON, a JsonSyntaxException is throws and an empty ResponseBody object is returned
 public static ResponseBody fromJSON (String json)
 {
-    System.out.println("parsing JSON: '" + json + "'.");
     ResponseBody body = new ResponseBody();
     try {
         Gson gson = new Gson();

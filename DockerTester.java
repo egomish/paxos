@@ -4,26 +4,25 @@ public class DockerTester {
 public static void
 main (String[] args)
 {
-    String[] nodes = {"localhost:4001", "localhost:4002"};
+    String[] nodes = {"localhost:4002", "localhost:4003"};
     HttpResponse[] responses;
 
+/*
 //broadcast hello world
     responses = ClientRequest.sendBroadcastRequest(nodes, 
                                                    "GET", "/hello", null, 
                                                    null);
-    for (int i = 0; i < responses.length; i += 1) {
-        HttpResponse response = responses[i];
-        System.out.println(nodes[i] + ": " + responses[i].getResponseBody());
+    for (HttpResponse res : responses) {
+        System.out.println(res.getResponseBody());
     }
+*/
 
-//broadcast paxos/proposer
-    responses = ClientRequest.sendBroadcastRequest(nodes, 
-                                                   "GET", "/paxos/proposer", null, 
-                                                   null);
-    for (int i = 0; i < responses.length; i += 1) {
-        HttpResponse response = responses[i];
-        System.out.println(nodes[i] + ": " + responses[i].getResponseBody());
-    }
+//attempt paxos/proposer
+    String reqbody = "this is a test";
+    HttpResponse response = ClientRequest.sendRequest(nodes[0], 
+                                          "GET", "/paxos/proposer", null, 
+                                          reqbody);
+    System.out.println(nodes[0] + ": " + response.getResponseBody());
 }
 
 

@@ -10,7 +10,7 @@ public class ContextPaxosAcceptor extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("Handling " + exch.getRequestMethod() + " request...");
+    System.err.println("[PaxosAcceptor] Handling " + exch.getRequestMethod() + " request...");
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
@@ -56,8 +56,9 @@ private void doPaxosAcceptorPrepare (HttpExchange exch)
         restype = "application/json";
         resmsg = theProposal.toJSON();
         sendResponse(exch, rescode, resmsg, restype);
+    } else {
+        //the received proposal is old--ignore it
     }
-    //the received proposal is old--ignore it
 }
 
 private void doPaxosAcceptorAccept (HttpExchange exch)
@@ -76,6 +77,11 @@ private void doPaxosAcceptorAccept (HttpExchange exch)
     restype = "application/json";
     resmsg = theProposal.toJSON(); //XXX: only seqnum is needed
     sendResponse(exch, rescode, resmsg, restype);
+}
+
+protected ContextPaxosAcceptor ()
+{
+    theProposal = new PaxosProposal();
 }
 
 

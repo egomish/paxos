@@ -10,7 +10,7 @@ public class ContextPaxosProposer extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("Handling " + exch.getRequestMethod() + " request...");
+    System.err.println("[PaxosProposer] Handling " + exch.getRequestMethod() + " request...");
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
@@ -31,10 +31,14 @@ public void handle (HttpExchange exch) throws IOException
 
 private void doPaxosProposer (HttpExchange exch)
 {
-    System.out.println("paxos!!");
+    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+
     int rescode;
     String resmsg;
     String restype;
+
+    theProposal.incrementSequenceNumber();
+    theProposal.setAcceptedValue(reqbody);
 
     //prepare
     String value = sendPrepare(theProposal);
@@ -42,7 +46,6 @@ private void doPaxosProposer (HttpExchange exch)
         theProposal.setAcceptedValue(value);
     } else {
         //set the value in theProposal to incoming argument
-        System.out.println("value was null!!");
         theProposal.setAcceptedValue("this is a placeholder value");
     }
 
@@ -78,8 +81,10 @@ private void doPaxosProposer (HttpExchange exch)
 private String sendPrepare (PaxosProposal prop)
 {
     String value = null;
-    String reqbody = prop.toJSON();
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "paxos/acceptor/prepare", null, reqbody);
+    String reqbody;
+    reqbody = prop.toJSON();
+
+    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/acceptor/prepare", null, reqbody);
     for (HttpResponse res : responses) {
         PaxosProposal resprop = PaxosProposal.fromJSON(res.getResponseBody());
         if (resprop.getAcceptedValue() != null) {
@@ -93,7 +98,7 @@ private String sendPrepare (PaxosProposal prop)
 private int sendAccept (PaxosProposal prop)
 {
     String reqbody = prop.toJSON();
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "paxos/acceptor/accept", null, reqbody);
+    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/acceptor/accept", null, reqbody);
     for (HttpResponse res : responses) {
         PaxosProposal resprop = PaxosProposal.fromJSON(res.getResponseBody());
         if (resprop.getSequenceNumber() != prop.getSequenceNumber()) {
@@ -108,7 +113,7 @@ private int sendAccept (PaxosProposal prop)
 private boolean sendCommit (PaxosProposal prop)
 {
     String reqbody = prop.toJSON();
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "paxos/commit", null, reqbody);
+    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/commit", null, reqbody);
 
     for (HttpResponse res : responses) {
         int rescode = res.getResponseCode();
@@ -117,6 +122,11 @@ private boolean sendCommit (PaxosProposal prop)
         }
     }
     return true;
+}
+
+protected ContextPaxosProposer ()
+{
+    theProposal = new PaxosProposal();
 }
 
 

@@ -52,6 +52,20 @@ protected BaseContext()
         primaryIPAddress = mainip;
         isPrimary = false;
     }
+
+    String nodes = System.getenv().get("VIEW");
+    if (nodes == null) {
+        nodeView = new String[2];
+        nodeView[0] = "localhost:4001";
+        nodeView[1] = "localhost:4002";
+    } else {
+        nodeView = nodes.split(",");
+        for (int i = 0; i < nodeView.length; i += 1) {
+            //XXX: this seems like a really dumb hack
+            //add port number to known IP addresses
+            nodeView[i] += ":8080";
+        }
+    }
 }
 
 protected String[] nodeView;
