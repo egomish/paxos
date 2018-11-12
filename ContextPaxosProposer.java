@@ -10,6 +10,9 @@ public class ContextPaxosProposer extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
+    System.err.println("[" + this.getClass().getName() + "] " + 
+                       "Handling " + exch.getRequestMethod() + " request...");
+
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
@@ -30,19 +33,19 @@ public void handle (HttpExchange exch) throws IOException
 
 private void doPaxosProposer (HttpExchange exch)
 {
-    //XXX: in a production system, this string would be sanitized
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
 
     int rescode;
     String resmsg;
     String restype;
 
-    theProposal.incrementSequenceNumber();
-    theProposal.setAcceptedValue(reqbody);
+    //increment seqnum
+    this.updateSequenceNumber(this.getSequenceNumber());
+    theProposal.setSequenceNumber(this.getSequenceNumber());
 
     System.out.println("sending prepare...");
     //prepare
-    String value = sendPrepare(theProposal);
+    String value = sendPrepare();
     if (value != null) {
         theProposal.setAcceptedValue(value);
     } else {
@@ -52,12 +55,12 @@ private void doPaxosProposer (HttpExchange exch)
 
     System.out.println("sending accept...");
     //accept
-    int seqnum = sendAccept(theProposal);
+    int latestseqnum = sendAccept();
 
-    System.out.println("sending commit...");
-    //commit
-    if (seqnum == theProposal.getSequenceNumber()) {
-        boolean success = sendCommit(theProposal);
+    if (latestseqnum == this.getSequenceNumber()) {
+        System.out.println("sending commit...");
+        //commit
+        boolean success = sendCommit();
         if (success) {
             rescode = 200;
             restype = "application/json";
@@ -71,7 +74,8 @@ private void doPaxosProposer (HttpExchange exch)
             resmsg = resbody.toJSON();
         }
     } else {
-        //TODO: do something better here
+        this.updateSequenceNumber(latestseqnum);
+        //XXX: this drops the proposal on the floor
         rescode = 501;
         restype = "application/json";
         ResponseBody resbody = new ResponseBody(false, "commit was refused");
@@ -81,47 +85,52 @@ private void doPaxosProposer (HttpExchange exch)
     sendResponse(exch, rescode, resmsg, restype);
 }
 
-private String sendPrepare (PaxosProposal prop)
+//XXX: prepare messages are sent serially
+private String sendPrepare ()
 {
     String value = null;
     String reqbody;
-    reqbody = prop.toJSON();
+    reqbody = theProposal.toJSON();
 
-    System.out.println("sending proposal " + reqbody);
-    //TODO: replae ClientRequest with Client
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/acceptor/prepare", null, reqbody);
-    for (HttpResponse res : responses) {
-        PaxosProposal resprop = PaxosProposal.fromJSON(res.getResponseBody());
+    System.out.println("preparing: " + reqbody);
+    Client[] multi = Client.readyMulticast(this.getNodeView(), "POST", "/paxos/acceptor/prepare", reqbody);
+    for (Client cl : multi) {
+        cl.sendAsync();
+        cl.receiveAsync();
+        PaxosProposal resprop = PaxosProposal.fromJSON(cl.getResponseBody());
         if (resprop.getAcceptedValue() != null) {
-            //TODO: set the value if it's the latest, not if it's the last
             value = resprop.getAcceptedValue();
         }
     }
     return value;
 }
 
-private int sendAccept (PaxosProposal prop)
+private int sendAccept ()
 {
-    String reqbody = prop.toJSON();
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/acceptor/accept", null, reqbody);
-    for (HttpResponse res : responses) {
-        PaxosProposal resprop = PaxosProposal.fromJSON(res.getResponseBody());
-        if (resprop.getSequenceNumber() != prop.getSequenceNumber()) {
-            //XXX: what if there are multiple seqnums?
-            return resprop.getSequenceNumber();
+    String reqbody = theProposal.toJSON();
+    Client[] multi = Client.readyMulticast(this.getNodeView(), "POST", "/paxos/acceptor/accept", reqbody);
+    int latestseqnum = 0;
+    for (Client cl : multi) {
+        cl.sendAsync();
+        cl.receiveAsync();
+        PaxosProposal resprop = PaxosProposal.fromJSON(cl.getResponseBody());
+        int seqnum = resprop.getSequenceNumber();
+        if (seqnum > latestseqnum) {
+            latestseqnum = seqnum;
         }
     }
-    return prop.getSequenceNumber();
+    return latestseqnum;
 }
 
-//TODO: use reilable broadcast
-private boolean sendCommit (PaxosProposal prop)
+//TODO: use reliable broadcast
+private boolean sendCommit ()
 {
-    String reqbody = prop.toJSON();
-    HttpResponse[] responses = ClientRequest.sendBroadcastRequest(this.getNodeView(), "POST", "/paxos/commit", null, reqbody);
-
-    for (HttpResponse res : responses) {
-        int rescode = res.getResponseCode();
+    String reqbody = theProposal.toJSON();
+    Client[] multi = Client.readyMulticast(this.getNodeView(), "POST", "/paxos/commit", reqbody);
+    for (Client cl : multi) {
+        cl.sendAsync();
+        cl.receiveAsync();
+        int rescode = cl.getResponseCode();
         if (rescode != 200) {
             return false;
         }
@@ -129,12 +138,24 @@ private boolean sendCommit (PaxosProposal prop)
     return true;
 }
 
+private int getSequenceNumber ()
+{
+    return (monotonicNumber * 100) + this.processID;
+}
+
+private void updateSequenceNumber (int seqnum)
+{
+    monotonicNumber = ((seqnum / 100) + 1);
+}
+
 protected ContextPaxosProposer ()
 {
-    theProposal = new PaxosProposal(this.processID);
+    monotonicNumber = 0;
+    theProposal = new PaxosProposal();
 }
 
 
+private int monotonicNumber;
 private PaxosProposal theProposal;
 
 }

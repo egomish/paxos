@@ -13,6 +13,38 @@ import java.util.List;
 public class Client {
 
 
+public static String fromInputStream (InputStream in)
+{
+    String str = "";
+
+    try {
+        int b = in.read();
+        while (b != -1) {
+            str += (char)b;
+            b = in.read();
+        }
+    } catch (IOException e) {
+        System.err.println("I/O exception: " + e.getMessage());
+        str = "";
+    }
+
+    if (str.length() == 0) {
+        str = null;
+    }
+
+    return str;
+}
+
+//sends request and stores response in resCode and resBody
+public void run ()
+{
+}
+
+public String getDestIP ()
+{
+    return ip;
+}
+
 public int getResponseCode ()
 {
     return resCode;
@@ -71,11 +103,17 @@ public void sendAsync ()
         resBody = ResponseBody.serverError().toJSON();
         return;
     }
+    System.out.println("Sleeping...");
+    try {
+        Thread.sleep(5 * 1000);
+    } catch (InterruptedException e) {
+        System.out.println("Interrupted.");
+    }
+    System.out.println("Done sleeping.");
 }
 
 public void receiveAsync ()
 {
-    //send request
     try {
         conn.connect();
     } catch (ConnectException e) {
@@ -86,11 +124,13 @@ public void receiveAsync ()
         System.err.println("server at " + url + " not reachable: " + e.getMessage());
         resCode = 501;
         resBody = ResponseBody.serverError().toJSON();
+        return;
     } catch (IOException e) {
         System.err.println("I/O exception while sending request.");
         e.printStackTrace();
         resCode = 500;
         resBody = ResponseBody.serverError().toJSON();
+        return;
     }
 
     //get response
@@ -119,19 +159,29 @@ public void receiveAsync ()
     }
 
     //store response
-    try {
-        resBody = "";
-        int b = in.read();
-        while (b != -1) {
-            resBody += (char)b;
-            b = in.read();
-        }
-    } catch (IOException e) {
-        System.err.println("could not read response body: " + e.getMessage());
+    resBody = Client.fromInputStream(in);
+    if (resBody == null) {
+        System.err.println("failed to read response body");
         resCode = 500;
         resBody = ResponseBody.serverError().toJSON();
         return;
     }
+}
+
+public void doSync ()
+{
+    this.sendAsync();
+    this.receiveAsync();
+}
+
+public static Client[] readyMulticast (String[] n, String m, String s, String b)
+{
+    Client[] clients = new Client[n.length];
+    for (int i = 0; i < n.length; i += 1) {
+        Client cl = new Client(n[i], m, s, b);
+        clients[i] = cl;
+    }
+    return clients;
 }
 
 public Client (String i, String m, String s, String b)
@@ -143,7 +193,7 @@ public Client (String i, String m, String s, String b)
 
     url = null;
     conn = null;
-    int resCode = 0;
+    resCode = 0;
     resBody = null;
 }
 

@@ -8,11 +8,6 @@ public int getSequenceNumber ()
     return sequenceNumber;
 }
 
-public int getProcessID ()
-{
-    return processID;
-}
-
 public String getAcceptedValue ()
 {
     return acceptedValue;
@@ -26,11 +21,6 @@ public void setSequenceNumber (int n)
 public void setAcceptedValue (String str)
 {
     acceptedValue = str;
-}
-
-public void incrementSequenceNumber ()
-{
-    sequenceNumber += 1;
 }
 
 //XXX: test this or remove it
@@ -50,21 +40,29 @@ public static PaxosProposal fromJSON (String json)
     return body;
 }
 
-public PaxosProposal ()
+public String toString ()
 {
-    this(0);
+    String str = "";
+    str += sequenceNumber;
+    str += ": ";
+    if (acceptedValue == null) {
+        str += "null";
+    } else {
+        str += acceptedValue;
+    }
+    return str;
 }
 
-public PaxosProposal (int pid)
+public PaxosProposal ()
 {
     sequenceNumber = 0;
-    processID = pid;
+    tentativeValue = null;
     acceptedValue = null;
 }
 
 
 private Integer sequenceNumber;
-private Integer processID;
+private String tentativeValue;;
 private String acceptedValue;
 
 }

@@ -13,7 +13,8 @@ public class ContextKVS extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("Handling " + exch.getRequestMethod() + " request...");
+    System.err.println("[" + this.getClass().getName() + "] " + 
+                       "Handling " + exch.getRequestMethod() + " request...");
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);

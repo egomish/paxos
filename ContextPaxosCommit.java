@@ -10,7 +10,8 @@ public class ContextPaxosCommit extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    Logger.log_request_in(this.getClass(), exch);
+    System.err.println("[" + this.getClass().getName() + "] " + 
+                       "Handling " + exch.getRequestMethod() + " request...");
 
     String path = exch.getRequestURI().getPath();
     if (!path.startsWith("/paxos/commit")) {
@@ -26,7 +27,7 @@ public void handle (HttpExchange exch) throws IOException
 
 private void doPaxosCommit (HttpExchange exch)
 {
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
     PaxosProposal received = PaxosProposal.fromJSON(reqbody);
     String tocommit = received.getAcceptedValue();
 

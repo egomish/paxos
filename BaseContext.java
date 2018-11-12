@@ -13,9 +13,12 @@ protected HttpResponse forwardRequestToPrimary (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
     String path = exch.getRequestURI().getPath();
-    String query = exch.getRequestURI().getQuery();
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
-    HttpResponse response = ClientRequest.sendRequest(primaryIPAddress, method, path, query, reqbody);
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
+    Client cl = new Client(primaryIPAddress, method, path, reqbody);
+    cl.doSync();
+    HttpResponse response = new HttpResponse();
+    response.setResponseCode(cl.getResponseCode());
+    response.setResponseBody(cl.getResponseBody());
     return response;
 }
 

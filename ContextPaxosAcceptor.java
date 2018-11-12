@@ -10,6 +10,9 @@ public class ContextPaxosAcceptor extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
+    System.err.println("[" + this.getClass().getName() + "] " + 
+                       "Handling " + exch.getRequestMethod() + " request...");
+
     String path = exch.getRequestURI().getPath();
     if (!path.startsWith("/paxos/acceptor")) {
         int rescode = 404;
@@ -35,7 +38,7 @@ public void handle (HttpExchange exch) throws IOException
 
 private void doPaxosAcceptorPrepare (HttpExchange exch)
 {
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
     PaxosProposal received = PaxosProposal.fromJSON(reqbody);
     System.out.println("received: " + reqbody);
 
@@ -46,25 +49,23 @@ private void doPaxosAcceptorPrepare (HttpExchange exch)
     int seqnum = received.getSequenceNumber();
     if (seqnum > theProposal.getSequenceNumber()) {
         theProposal.setSequenceNumber(seqnum);
+        System.out.println("ACK(" + theProposal.toString() + ").");
         rescode = 200;
         restype = "application/json";
         resmsg = theProposal.toJSON();
-        System.out.println("ACK(" + theProposal.getSequenceNumber()  + ": "
-                                  + theProposal.getAcceptedValue() + ").");
-        sendResponse(exch, rescode, resmsg, restype);
     } else {
         //the received proposal is old--refuse it
+        System.out.println("NAK(" + theProposal.getSequenceNumber() + ").");
         rescode = 409;
         restype = "application/json";
         resmsg = ResponseBody.clientError().toJSON();
-        System.out.println("NAK(" + theProposal.getSequenceNumber() + ").");
-        sendResponse(exch, rescode, resmsg, restype);
     }
+    sendResponse(exch, rescode, resmsg, restype);
 }
 
 private void doPaxosAcceptorAccept (HttpExchange exch)
 {
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
     PaxosProposal received = PaxosProposal.fromJSON(reqbody);
 
     int rescode;
@@ -77,13 +78,13 @@ private void doPaxosAcceptorAccept (HttpExchange exch)
     rescode = 200;
     restype = "application/json";
     resmsg = theProposal.toJSON(); //XXX: only seqnum is needed
-    System.out.println("ACK(" + theProposal.getSequenceNumber() + ").");
+    System.out.println("ACK(" + theProposal.toString() + ").");
     sendResponse(exch, rescode, resmsg, restype);
 }
 
 protected ContextPaxosAcceptor ()
 {
-    theProposal = new PaxosProposal(this.processID);
+    theProposal = new PaxosProposal();
 }
 
 
