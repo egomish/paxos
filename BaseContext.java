@@ -1,8 +1,16 @@
 import java.io.OutputStream;
 import com.sun.net.httpserver.HttpExchange;
+import java.util.HashMap;
 
 
 public abstract class BaseContext {
+
+
+protected static HashMap<Integer, String> requestHistory;
+
+{
+    requestHistory = new HashMap<Integer, String>();
+}
 
 public String[] getNodeView ()
 {
@@ -31,7 +39,7 @@ protected void sendResponse (HttpExchange exch,
 {
     try {
         String method = exch.getRequestMethod();
-        System.err.println("Responding to " + method + " with " + rescode + ".");
+        System.err.println(this + " Responding: " + rescode);
         if (restype != null) {
             exch.getResponseHeaders().set("Content-Type", restype);
         }
@@ -45,8 +53,14 @@ protected void sendResponse (HttpExchange exch,
     }
 }
 
+public String toString ()
+{
+    return "[" + this.getClass().getName() + "]";
+}
+
 protected BaseContext()
 {
+
     String mainip = System.getenv().get("MAINIP");
     if (mainip == null) {
         primaryIPAddress = null;
@@ -70,6 +84,13 @@ protected BaseContext()
         }
     }
 
+    String ipport = System.getenv().get("IP_PORT");
+    if (ipport == null) {
+         ipAndPort = "localhost:8080";
+    } else {
+         ipAndPort = ipport;
+    }
+
     String pid = System.getenv().get("PID");
     if (pid == null) {
         processID = 0;
@@ -84,6 +105,7 @@ protected BaseContext()
 }
 
 protected String[] nodeView;
+protected String ipAndPort;
 protected int processID;
 protected String primaryIPAddress;
 protected boolean isPrimary;

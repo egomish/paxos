@@ -10,10 +10,8 @@ public class ContextPaxosCommit extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("[" + this.getClass().getName() + "] " + 
-                       "Handling " + exch.getRequestMethod() + " request...");
-
     String path = exch.getRequestURI().getPath();
+    System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
     if (!path.startsWith("/paxos/commit")) {
         int rescode = 404;
         String restype = "application/json";

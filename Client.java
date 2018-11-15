@@ -9,9 +9,19 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.util.Map;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
-public class Client {
+public class Client implements Runnable {
 
+
+/*
+public static ExecutorService threadPool;
+
+{
+    threadPool = Executors.newCachedThreadPool();
+}
+*/
 
 public static String fromInputStream (InputStream in)
 {
@@ -35,14 +45,44 @@ public static String fromInputStream (InputStream in)
     return str;
 }
 
-//sends request and stores response in resCode and resBody
+public static Client[] readyMulticast (String[] n, String m, String s, String b)
+{
+    Client[] clients = new Client[n.length];
+    for (int i = 0; i < n.length; i += 1) {
+        Client cl = new Client(n[i], m, s, b);
+        clients[i] = cl;
+    }
+    return clients;
+}
+
+public static boolean doneMajority (Client[] clients)
+{
+    int majority = clients.length / 2 + 1;
+    int rollcall = 0;
+
+    for (Client cl : clients) {
+        if (cl.done()) {
+            rollcall += 1;
+        }
+    }
+
+    if (rollcall < majority) {
+        return false;
+    }
+    return true;
+}
+
+//interface Runnable
 public void run ()
 {
+    sendAsync();
+    receiveAsync();
+    messageComplete = true;
 }
 
 public String getDestIP ()
 {
-    return ip;
+    return request.getDestIP();
 }
 
 public int getResponseCode ()
@@ -55,11 +95,36 @@ public String getResponseBody ()
     return resBody;
 }
 
+public boolean done ()
+{
+    if (messageComplete) {
+        try {
+            messageThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+    return messageComplete;
+}
+
+public void fireAsync ()
+{
+    messageComplete = false;
+    messageThread = new Thread(this);
+    messageThread.start();
+}
+
+public void doSync ()
+{
+    this.sendAsync();
+    this.receiveAsync();
+}
+
 //XXX: exceptions should be re-thrown instead of logged
-public void sendAsync ()
+private void sendAsync ()
 {
     //set URL
-    String urlstr = ip + service;
+    String urlstr = request.getDestIP() + request.getService();
     try {
         url = new URL("http://" + urlstr);
     } catch (MalformedURLException e) {
@@ -80,7 +145,7 @@ public void sendAsync ()
     }
 
     try {
-        conn.setRequestMethod(method);
+        conn.setRequestMethod(request.getMethod());
     } catch (ProtocolException e) {
         System.err.println("bad method: " + e.getMessage());
         resCode = 400;
@@ -90,10 +155,10 @@ public void sendAsync ()
 
     //set request body
     try {
-        if (body != null) {
+        if (request.getBody() != null) {
             conn.setDoOutput(true);
             OutputStream out = conn.getOutputStream();
-            out.write(body.getBytes());
+            out.write(request.getBody().getBytes());
             out.flush();
             out.close();
         }
@@ -103,17 +168,8 @@ public void sendAsync ()
         resBody = ResponseBody.serverError().toJSON();
         return;
     }
-    System.out.println("Sleeping...");
-    try {
-        Thread.sleep(5 * 1000);
-    } catch (InterruptedException e) {
-        System.out.println("Interrupted.");
-    }
-    System.out.println("Done sleeping.");
-}
 
-public void receiveAsync ()
-{
+    //send request
     try {
         conn.connect();
     } catch (ConnectException e) {
@@ -132,7 +188,10 @@ public void receiveAsync ()
         resBody = ResponseBody.serverError().toJSON();
         return;
     }
+}
 
+private void receiveAsync ()
+{
     //get response
     try {
         resCode = conn.getResponseCode();
@@ -168,45 +227,35 @@ public void receiveAsync ()
     }
 }
 
-public void doSync ()
+public Client (String ip, String method, String service, String body)
 {
-    this.sendAsync();
-    this.receiveAsync();
-}
-
-public static Client[] readyMulticast (String[] n, String m, String s, String b)
-{
-    Client[] clients = new Client[n.length];
-    for (int i = 0; i < n.length; i += 1) {
-        Client cl = new Client(n[i], m, s, b);
-        clients[i] = cl;
-    }
-    return clients;
-}
-
-public Client (String i, String m, String s, String b)
-{
-    ip = i;
-    method = m;
-    service = s;
-    body = b;
-
+    request = new POJORequest(ip, method, service, body);
     url = null;
     conn = null;
     resCode = 0;
     resBody = null;
+    messageComplete = true;
+}
+
+public Client (POJORequest req)
+{
+    request = req;
+    url = null;
+    conn = null;
+    resCode = 0;
+    resBody = null;
+    messageComplete = true;
 }
 
 
-private String ip;
-private String method;
-private String service;
-private String body;
+private POJORequest request;
 
 private URL url;
 private HttpURLConnection conn;
 private int resCode;
 private Map<String, List<String>> resHeaders;
 private String resBody;
+private Thread messageThread;
+private boolean messageComplete;
 
 }

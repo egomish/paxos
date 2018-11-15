@@ -4,21 +4,15 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 
-public class ContextHello extends BaseContext implements HttpHandler
+public class ContextHistory extends BaseContext implements HttpHandler
 {
 
 
 public void handle (HttpExchange exch) throws IOException
 {
-    if (!isPrimary) {
-        HttpResponse response = forwardRequestToPrimary(exch);
-        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
-        return;
-    }
-
     String path = exch.getRequestURI().getPath();
     System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
-    if (!path.startsWith("/hello")) {
+    if (!path.startsWith("/history")) {
         int rescode = 404;
         String restype = "application/json";
         String resmsg = ResponseBody.clientError().toJSON();
@@ -26,10 +20,10 @@ public void handle (HttpExchange exch) throws IOException
         return;
     }
 
-    doHello(exch);
+    doHistory(exch);
 }
 
-private void doHello (HttpExchange exch)
+private void doHistory (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
     URI uri = exch.getRequestURI();
@@ -37,7 +31,8 @@ private void doHello (HttpExchange exch)
     int rescode = 200;
     String resmsg = "";
     if (method.equals("GET")) {
-        resmsg = "Hello world!";
+        System.out.println(BaseContext.requestHistory.toString());
+        resmsg = BaseContext.requestHistory.toString();
     } else {
         rescode = 405;
         resmsg = method + " " + path + " not allowed";

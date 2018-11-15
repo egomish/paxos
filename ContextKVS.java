@@ -13,8 +13,6 @@ public class ContextKVS extends BaseContext implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("[" + this.getClass().getName() + "] " + 
-                       "Handling " + exch.getRequestMethod() + " request...");
     if (!isPrimary) {
         HttpResponse response = forwardRequestToPrimary(exch);
         sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
@@ -22,6 +20,7 @@ public void handle (HttpExchange exch) throws IOException
     }
 
     String path = exch.getRequestURI().getPath();
+    System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
     if (!path.startsWith("/keyValue-store")) {
         int rescode = 404;
         String restype = "application/json";

@@ -1,3 +1,4 @@
+rm *.class
 javac -cp gson-2.8.5.jar:. SmallServer.java \
                            \
                            HttpResponse.java ResponseBody.java \
