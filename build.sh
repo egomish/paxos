@@ -1,17 +1,20 @@
 rm *.class
 javac -cp gson-2.8.5.jar:. SmallServer.java \
-                           \
-                           HttpResponse.java ResponseBody.java \
+                           POJO.java \
                            \
                            Client.java \
+                           POJOReqHttp.java POJOResHttp.java \
                            \
-                           BaseContext.java \
                            ContextHello.java ContextTest.java \
                            \
                            ContextKVS.java \
-                           RequestBody.java \
+                           POJOReqBody.java POJOResBody.java \
                            \
                            ContextPaxosProposer.java ContextPaxosAcceptor.java \
-                           ContextPaxosCommit.java \
+                           POJOPaxosBody.java \
+                           PaxosResponse.java \
+                           \
+                           ContextHistory.java \
+                           POJOHistory.java \
                            \
 

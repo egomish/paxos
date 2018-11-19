@@ -4,27 +4,20 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 
-public class ContextHello extends BaseContext implements HttpHandler
+public class ContextHello extends SmallServer implements HttpHandler
 {
 
 
 public void handle (HttpExchange exch) throws IOException
 {
     if (!isPrimary) {
-        HttpResponse response = forwardRequestToPrimary(exch);
-        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
+        POJOResHttp response = forwardToPrimary(exch);
+        sendResponse(exch, response);
         return;
     }
 
     String path = exch.getRequestURI().getPath();
-    System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
-    if (!path.startsWith("/hello")) {
-        int rescode = 404;
-        String restype = "application/json";
-        String resmsg = ResponseBody.clientError().toJSON();
-        sendResponse(exch, rescode, resmsg, restype);
-        return;
-    }
+    System.err.println(this.receiveLog(exch.getRequestMethod(), path));
 
     doHello(exch);
 }
@@ -34,15 +27,18 @@ private void doHello (HttpExchange exch)
     String method = exch.getRequestMethod();
     URI uri = exch.getRequestURI();
     String path = uri.getPath();
+
     int rescode = 200;
-    String resmsg = "";
+    String resmsg;
+
     if (method.equals("GET")) {
-        resmsg = "Hello world!";
+        resmsg = new POJOResBody(true, "Hello world!").toJSON();
     } else {
         rescode = 405;
-        resmsg = method + " " + path + " not allowed";
+        String info = method + " " + path + " not allowed";
+        resmsg = new POJOResBody(false, info).toJSON();
     }
-    sendResponse(exch, rescode, resmsg, null);
+    sendResponse(exch, rescode, resmsg);
 }
 
 

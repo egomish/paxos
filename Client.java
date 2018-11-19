@@ -9,19 +9,19 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.util.Map;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
 
 public class Client implements Runnable {
 
 
 /*
-public static ExecutorService threadPool;
-
+ *  From Runnable interface.
+ */
+public void run ()
 {
-    threadPool = Executors.newCachedThreadPool();
+    sendAsync();
+    receiveAsync();
+    messageComplete = true;
 }
-*/
 
 public static String fromInputStream (InputStream in)
 {
@@ -55,6 +55,20 @@ public static Client[] readyMulticast (String[] n, String m, String s, String b)
     return clients;
 }
 
+public static void doSyncMulti (Client[] multi)
+{
+    for (Client cl : multi) {
+        cl.doSync();
+    }
+}
+
+public static void fireAsyncMulti (Client[] multi)
+{
+    for (Client cl : multi) {
+        cl.fireAsync();
+    }
+}
+
 public static boolean doneMajority (Client[] clients)
 {
     int majority = clients.length / 2 + 1;
@@ -72,27 +86,24 @@ public static boolean doneMajority (Client[] clients)
     return true;
 }
 
-//interface Runnable
-public void run ()
+public static boolean done (Client[] clients)
 {
-    sendAsync();
-    receiveAsync();
-    messageComplete = true;
+    for (Client cl : clients) {
+        if (!cl.done()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 public String getDestIP ()
 {
-    return request.getDestIP();
+    return request.ip;
 }
 
-public int getResponseCode ()
+public POJOResHttp getResponse ()
 {
-    return resCode;
-}
-
-public String getResponseBody ()
-{
-    return resBody;
+    return new POJOResHttp(resCode, resBody);
 }
 
 public boolean done ()
@@ -124,13 +135,13 @@ public void doSync ()
 private void sendAsync ()
 {
     //set URL
-    String urlstr = request.getDestIP() + request.getService();
+    String urlstr = request.ip + request.service;
     try {
         url = new URL("http://" + urlstr);
     } catch (MalformedURLException e) {
         System.err.println("malformed url: " + e.getMessage());
         resCode = 400;
-        resBody = ResponseBody.clientError().toJSON();
+        resBody = POJOResBody.clientError().toJSON();
         return;
     }
 
@@ -140,32 +151,32 @@ private void sendAsync ()
     } catch (IOException e) {
         System.err.println("could not connect: " + e.getMessage());
         resCode = 400;
-        resBody = ResponseBody.clientError().toJSON();
+        resBody = POJOResBody.clientError().toJSON();
         return;
     }
 
     try {
-        conn.setRequestMethod(request.getMethod());
+        conn.setRequestMethod(request.method);
     } catch (ProtocolException e) {
         System.err.println("bad method: " + e.getMessage());
         resCode = 400;
-        resBody = ResponseBody.clientError().toJSON();
+        resBody = POJOResBody.clientError().toJSON();
         return;
     }
 
     //set request body
     try {
-        if (request.getBody() != null) {
+        if (request.body != null) {
             conn.setDoOutput(true);
             OutputStream out = conn.getOutputStream();
-            out.write(request.getBody().getBytes());
+            out.write(request.body.getBytes());
             out.flush();
             out.close();
         }
     } catch (IOException e) {
         System.err.println("could not create body: " + e.getMessage());
         resCode = 500;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     }
 
@@ -175,17 +186,17 @@ private void sendAsync ()
     } catch (ConnectException e) {
         System.err.println("server at " + url + " is down: " + e.getMessage());
         resCode = 501;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
     } catch (NoRouteToHostException e) {
         System.err.println("server at " + url + " not reachable: " + e.getMessage());
         resCode = 501;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     } catch (IOException e) {
         System.err.println("I/O exception while sending request.");
         e.printStackTrace();
         resCode = 500;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     }
 }
@@ -198,12 +209,13 @@ private void receiveAsync ()
     } catch (IOException e) {
         System.err.println("bad rescode while handling response to " + url);
         resCode = 500;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     }
 
     InputStream in = null;
     try {
+        ///XXX: resHeaders are never used
         resHeaders = conn.getHeaderFields();
         if ((200 <= resCode) && (resCode < 300)) {
             in = conn.getInputStream();
@@ -213,7 +225,7 @@ private void receiveAsync ()
     } catch (IOException e) {
         System.err.println("bad response body: " + e.getMessage());
         resCode = 500;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     }
 
@@ -222,22 +234,17 @@ private void receiveAsync ()
     if (resBody == null) {
         System.err.println("failed to read response body");
         resCode = 500;
-        resBody = ResponseBody.serverError().toJSON();
+        resBody = POJOResBody.serverError().toJSON();
         return;
     }
 }
 
 public Client (String ip, String method, String service, String body)
 {
-    request = new POJORequest(ip, method, service, body);
-    url = null;
-    conn = null;
-    resCode = 0;
-    resBody = null;
-    messageComplete = true;
+    this(new POJOReqHttp(ip, method, service, body));
 }
 
-public Client (POJORequest req)
+public Client (POJOReqHttp req)
 {
     request = req;
     url = null;
@@ -248,13 +255,15 @@ public Client (POJORequest req)
 }
 
 
-private POJORequest request;
+private POJOReqHttp request;
 
 private URL url;
 private HttpURLConnection conn;
+
 private int resCode;
 private Map<String, List<String>> resHeaders;
 private String resBody;
+
 private Thread messageThread;
 private boolean messageComplete;
 

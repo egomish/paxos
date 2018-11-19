@@ -4,25 +4,18 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 
-public class ContextTest extends BaseContext implements HttpHandler
+public class ContextTest extends SmallServer implements HttpHandler
 {
 
 
 public void handle (HttpExchange exch) throws IOException
 {
-    if (!isPrimary) {
-        HttpResponse response = forwardRequestToPrimary(exch);
-        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
-        return;
-    }
-
     String path = exch.getRequestURI().getPath();
-    System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
-    if (!path.startsWith("/test")) {
-        int rescode = 404;
-        String restype = "application/json";
-        String resmsg = ResponseBody.clientError().toJSON();
-        sendResponse(exch, rescode, resmsg, restype);
+    System.err.println(this.receiveLog(exch.getRequestMethod(), path));
+
+    if (!isPrimary) {
+        POJOResHttp response = forwardToPrimary(exch);
+        sendResponse(exch, response.resCode, response.resBody);
         return;
     }
 
@@ -38,19 +31,24 @@ private void doTest (HttpExchange exch)
     int rescode = 200;
     String resmsg = "";
     if (method.equals("GET")) {
-        resmsg = "GET request received";
+        String info = "GET message received";
+        resmsg = new POJOResBody(true, info).toJSON();
     } else if (method.equals("POST")) {
         if (query == null) {
-            resmsg = "POST message received: null";
+            String info = "POST message received: null";
+            resmsg = new POJOResBody(true, info).toJSON();
         } else {
             int eqindex = query.indexOf("=");
-            resmsg = "POST message received: " + query.substring(eqindex + 1);
+            String info = "POST message received: " 
+                        + query.substring(eqindex + 1);
+            resmsg = new POJOResBody(true, info).toJSON();
         }
     } else {
         rescode = 405;
-        resmsg = method + " " + path + " not allowed";
+        String info = method + " " + path + " not allowed";
+        resmsg = new POJOResBody(false, info).toJSON();
     }
-    sendResponse(exch, rescode, resmsg, null);
+    sendResponse(exch, rescode, resmsg);
 }
 
 

@@ -7,29 +7,33 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 
-public class ContextKVS extends BaseContext implements HttpHandler
+public class ContextKVS extends SmallServer implements HttpHandler
 {
 
 
 public void handle (HttpExchange exch) throws IOException
 {
-    if (!isPrimary) {
-        HttpResponse response = forwardRequestToPrimary(exch);
-        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
-        return;
-    }
-
     String path = exch.getRequestURI().getPath();
-    System.err.println(this + " Request: " + exch.getRequestMethod() + " " + path);
-    if (!path.startsWith("/keyValue-store")) {
-        int rescode = 404;
-        String restype = "application/json";
-        String resmsg = ResponseBody.clientError().toJSON();
-        sendResponse(exch, rescode, resmsg, restype);
+    String query = exch.getRequestURI().getQuery();
+    System.err.println(this.receiveLog(exch.getRequestMethod(), path));
+
+    if (!isPrimary) {
+        POJOResHttp response = forwardToPrimary(exch);
+        sendResponse(exch, response.resCode, response.resBody);
         return;
     }
 
-    doKVS(exch);
+    if ((query == null) || (!query.equals("consensus=true"))) {
+        POJOResHttp response = doProposal(exch);
+        if (response.resCode != 200) {
+            throw new IndexOutOfBoundsException();
+        }
+        sendResponse(exch, response.resCode, response.resBody);
+        return;
+    } else {
+        doKVS(exch);
+    }
+
 }
 
 //XXX: if key contains '/' characters, key will be parsed as just the 
@@ -49,8 +53,9 @@ private static String parseKeyFromPath (String path)
 //     assumes that if there is an encoding, only the first one matters
 private static String parseValueFromRequest (HttpExchange exch)
 {
-    RequestBody reqbody = new RequestBody(exch.getRequestBody());
-    String value = reqbody.value();
+    String body = Client.fromInputStream(exch.getRequestBody());
+    POJOReqBody reqbody = POJOReqBody.fromJSON(body);
+    String value = reqbody.val;
 
     String contenttype = exch.getRequestHeaders().getFirst("Content-type");
     if (contenttype != null) {
@@ -61,7 +66,7 @@ private static String parseValueFromRequest (HttpExchange exch)
                 System.err.println("bad encoding: " + e.getMessage());
             }
         } else {
-            System.out.println("the content type is " + contenttype);
+            System.err.println("unknown encoding: " + contenttype);
         }
     }
 
@@ -113,7 +118,6 @@ private void doKVS (HttpExchange exch)
 
     //response fields
     int rescode = 200;
-    String restype = "";
     String resmsg = "";
 
     String subpath = uri.getPath().substring(16); //subtract "/keyValue-store/"
@@ -121,24 +125,22 @@ private void doKVS (HttpExchange exch)
         String subsubpath = subpath.substring(7); //subtract "search/"
         if (!method.equals("GET")) {
             rescode = 405;
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody(false, "method not allowed");
+            POJOResBody resbody = new POJOResBody(false, "method not allowed");
             resmsg = resbody.toJSON();
         } else {
-            restype = "application/json";
-            ResponseBody resbody = new ResponseBody();
+            POJOResBody resbody;
             String value = kvStore.get(urlkey);
             if (value != null) {
                 rescode = 200;
-                resbody.setResult(true, "key exists");
-                resbody.setMessageString("Success");
-                resbody.setExistFlag("true");
+                resbody = new POJOResBody(true, "key exists");
+                resbody.msg = "Success";
+                resbody.isExist = "true";
             } else {
                 rescode = 404;
-                resbody.setResult(false, "key does not exist");
-                resbody.setMessageString("Error");
-                resbody.setErrorString("Key does not exist");
-                resbody.setExistFlag("false");
+                resbody = new POJOResBody(true, "key does not exist");
+                resbody.msg = "Error";
+                resbody.error = "Key does not exist";
+                resbody.isExist = "false";
             }
             resmsg = resbody.toJSON();
         }
@@ -147,50 +149,46 @@ private void doKVS (HttpExchange exch)
             String value = kvStore.get(urlkey);
             if (value == null) {
                 rescode = 404;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(false, "key does not exist");
-                resbody.setMessageString("Error");
-                resbody.setErrorString("Key does not exist");
+                String info = "key does not exist";
+                POJOResBody resbody = new POJOResBody(false, info);
+                resbody.msg = "Error";
+                resbody.error = "Key does not exist";
                 resmsg = resbody.toJSON();
             } else {
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(true, value);
-                resbody.setMessageString("Success");
-                resbody.setValueString(value);
+                POJOResBody resbody = new POJOResBody(true, value);
+                resbody.msg = "Success";
+                resbody.value = value;
                 resmsg = resbody.toJSON();
             }
-        } else if (method.equals("PUT")) {
+        } else if (method.equals("PUT") || (method.equals("POST"))) {
             String reqvalue = parseValueFromRequest(exch);
             if (!ContextKVS.keyIsValid(urlkey)) {
                 rescode = 422;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(false, "key is invalid");
-                resbody.setMessageString("Error");
-                resbody.setErrorString("Key not valid");
+                POJOResBody resbody = new POJOResBody(false, "key is invalid");
+                resbody.msg = "Error";
+                resbody.error = "Key not valid";
                 resmsg = resbody.toJSON();
             } else if (!ContextKVS.valueIsValid(reqvalue)) {
                 rescode = 422;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(false, "value is invalid");
-                resbody.setMessageString("Error");
-                resbody.setErrorString("Value is missing");
+                String info = "value is invalid";
+                POJOResBody resbody = new POJOResBody(false, info);
+                resbody.msg = "Error";
+                resbody.error = "Value is missing";
                 resmsg = resbody.toJSON();
             } else if (kvStore.get(urlkey) == null) {
                 kvStore.put(urlkey, reqvalue);
                 rescode = 201;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(true, "key added");
-                resbody.setReplacedFlag(0);
-                resbody.setMessageString("Added successfully");
+                POJOResBody resbody = new POJOResBody(true, "key added");
+                resbody.debug = reqvalue;
+                resbody.replaced = 0;
+                resbody.msg = "Added successfully";
                 resmsg = resbody.toJSON();
             } else {
                 kvStore.put(urlkey, reqvalue);
                 rescode = 200;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(true, "key updated");
-                resbody.setDebugString(reqvalue);
-                resbody.setMessageString("Updated successfully");
-                resbody.setReplacedFlag(1);
+                POJOResBody resbody = new POJOResBody(true, "key updated");
+                resbody.msg = "Updated successfully";
+                resbody.replaced = 1;
                 resmsg = resbody.toJSON();
             }
         } else if (method.equals("DELETE")) {
@@ -198,24 +196,24 @@ private void doKVS (HttpExchange exch)
             if (value != null) {
                 kvStore.remove(urlkey);
                 rescode = 200;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(true, "key deleted");
-                resbody.setMessageString("Success");
+                POJOResBody resbody = new POJOResBody(true, "key deleted");
+                resbody.msg = "Success";
                 resmsg = resbody.toJSON();
             } else {
                 rescode = 404;
-                restype = "application/json";
-                ResponseBody resbody = new ResponseBody(false, "key does not exist");
-                resbody.setMessageString("Error");
-                resbody.setErrorString("Key does not exist");
+                String info = "key does not exist";
+                POJOResBody resbody = new POJOResBody(false, info);
+                resbody.msg = "Error";
+                resbody.error = "Key does not exist";
                 resmsg = resbody.toJSON();
             }
         } else {
             rescode = 405;
-            resmsg = method + " " + uri + " not allowed";
+            String info = method + " " + uri + " not allowed";
+            resmsg = new POJOResBody(false, info).toJSON();
         }
     }
-    sendResponse(exch, rescode, resmsg, restype);
+    sendResponse(exch, rescode, resmsg);
 }
 
 protected ContextKVS()
@@ -229,6 +227,6 @@ protected ContextKVS()
 }
 
 
-private HashMap<String, String> kvStore;
+private static HashMap<String, String> kvStore;
 
 }
