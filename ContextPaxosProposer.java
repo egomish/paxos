@@ -34,13 +34,14 @@ public void handle (HttpExchange exch) throws IOException
             paxosres = doPaxosProposal(this.popProposal());
             if (paxosres.resCode == 409) {
                 //the proposal was refused because it was too old
-                //TODO: use history in the resbody to catch up
                 this.pushProposal(request);
                 POJOHistory history = POJOHistory.fromJSON(paxosres.reqHistory);
                 this.replayHistory(history);
             } else if (paxosres.resCode == 522) {
                 System.err.println("WARNING: Incomplete commit.\n" + 
                                    "Implement reliable broadcast on commit to resolve this warning.");
+            } else {
+                System.out.println("paxosres: " + paxosres.toString());
             }
         } catch (TimeoutException e) {
             //push the proposal back on the stack to try again
@@ -57,7 +58,6 @@ public void handle (HttpExchange exch) throws IOException
     if (this.hasProposalQueue()) {
         System.out.println(requestBuffer.size() + " requests not committed!!");
     }
-    System.out.println("responding with causal history");
     String history = this.getHistoryAsJSON();
     POJOResHttp res = new POJOResHttp(paxosres.resCode, history);
     sendResponse(exch, res);
@@ -101,11 +101,11 @@ private PaxosResponse doPaxosProposal (String request) throws TimeoutException
     boolean finished = sendCommit(seqnum, reqindex, value);
     if (!finished) {
         paxosres.resCode = 522;
-//        System.out.println("commit failed");
+        System.out.println("commit failed");
         return paxosres;
     }
     paxosres.resCode = 200;
-//    System.out.println("consensus!: " + paxosres.toString());
+    System.out.println("consensus!: " + paxosres.toString());
     return paxosres;
 }
 

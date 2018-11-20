@@ -149,14 +149,13 @@ protected String getHistoryAt (int reqindex)
 
 protected void replayHistory (POJOHistory pojo)
 {
-    System.err.println(log("replaying history..."));
+    this.reqHistory = pojo;
     //reset the key-value store so history can be replayed
     ContextKVS.kvStore.clear();
-    //no need to reset the view--it's a set, so repeating requests has no effect
-    this.nodeView = this.nodeView;
 
-    for (int i = 0; i < pojo.history.size(); i += 1) {
-        String req = pojo.history.get(i);
+    printLog("replaying history...");
+    for (int i = 0; i < this.reqHistory.history.size(); i += 1) {
+        String req = this.reqHistory.history.get(i);
         if (req == null) {
             //no request was specified for this index--wait to keep replaying
             //XXX: when could this possibly happen?
@@ -167,8 +166,10 @@ protected void replayHistory (POJOHistory pojo)
         String ip = ipAndPort;
         String method = request.method;
         String service = request.service;
+        //this is a terrible hack to ensure we don't paxos replayed requests
         service += "?consensus=true"; //XXXESG DEBUG
         String body = request.body;
+        System.out.println("(" + i + ") [" + ip + "] " + method + " " + service);
         Client cl = new Client(ip, method, service, body);
         cl.doSync();
         POJOResHttp response = cl.getResponse();

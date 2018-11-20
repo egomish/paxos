@@ -18,9 +18,9 @@ public static void test_hello ()
 }
 
 //on view[0], foo=bar
-public static void test_put_key (String key, String val)
+public static void test_put_key (String node, String key, String val)
 {
-    Client cl = new Client(view[0], "POST", "/keyValue-store/" + key, "{val: '" + val + "'}");
+    Client cl = new Client(node, "POST", "/keyValue-store/" + key, "{val: '" + val + "'}");
     cl.fireAsync();
     while (!cl.done()) {
         try {
@@ -29,7 +29,7 @@ public static void test_put_key (String key, String val)
             //do nothing
         }
     }
-    System.out.println(view[0] + ": " + cl.getResponse().resBody);
+    System.out.println(node + ": " + cl.getResponse().resBody);
 }
 
 //propose messages concurrently
@@ -84,13 +84,20 @@ public static void test_delete_view (String ipport)
     System.out.println(cl.getDestIP() + ": " + cl.getResponse().resBody);
 }
 
+public static void test_put_add_put ()
+{
+    test_put_key("10.0.0.2:4002", "foo", "bar");
+    test_add_view("10.0.0.9:4009");
+    test_put_key("10.0.0.9:4009", "abc", "value");
+}
+
 public static void
 main (String[] args)
 {
     String[] testnodes = {view[0], view[2]};
 
 //    test_hello();
-//    test_put_key("foo", "bar");
+//    test_put_key(view[0], "foo", "bar");
 //    test_concurrent_put(nodes, {"key1", "key2"}, {"val1", "val2"});
 /*
     test_concurrent_put(testnodes, {"key1.1st", "key2.1st"}, 
@@ -101,8 +108,10 @@ main (String[] args)
                                    {"Brothers", "Diablo"});
 */
 //    test_get_view();
-    test_add_view("10.0.0.9:4009");
+//    test_add_view("10.0.0.9:4009");
 //    test_delete_view(view[1]);
+
+    test_put_add_put();
 
 }
 

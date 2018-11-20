@@ -13,9 +13,9 @@ public class ContextKVS extends SmallServer implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    String path = exch.getRequestURI().getPath();
+    String uri = exch.getRequestURI().toString();
     String query = exch.getRequestURI().getQuery();
-    System.err.println(this.receiveLog(exch.getRequestMethod(), path));
+    System.err.println(this.receiveLog(exch.getRequestMethod(), uri));
 
     if (!isPrimary) {
         POJOResHttp response = forwardToPrimary(exch);

@@ -78,18 +78,21 @@ private void doPaxosAcceptorCommit (HttpExchange exch)
     String reqbody = Client.fromInputStream(exch.getRequestBody());
     POJOPaxosBody recv = POJOPaxosBody.fromJSON(reqbody);
 
-    //store accepted value in requestHistory
-    this.addToHistoryAt(recv.reqIndex, recv.accValue);
-
-    //parse the committed value into an API call
+    //parse the value into an API call
     //XXX: if the client set the ip, it'll be clobbered
     //     (but why would the client ever set the ip?)
     POJOReqHttp request = POJOReqHttp.fromJSON(recv.accValue);
     request.ip = this.ipAndPort;
+
+    //if the request interacts with the KVS, at it to the history
+    if (request.service.startsWith("/keyValue-store")) {
+        this.addToHistoryAt(recv.reqIndex, recv.accValue);
+    }
+
+    //this is a terrible hack to ensure that we don't paxos indefinitely
     request.service += "?consensus=true"; //XXXESG DEBUG
 
     //reset the proposal value so that new proposals can get accepted
-    //XXX: this resets the seqnum and the value, not just the value
     this.accValue = null;
 
     //execute the API call

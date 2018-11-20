@@ -19,6 +19,9 @@ public void handle (HttpExchange exch) throws IOException
         POJOResHttp response = doProposal(exch);
         if (response.resCode != 200) {
             throw new UnsupportedOperationException();
+        } else {
+            //cluster has added node, now add node to node's cluster
+            this.addToView(ipAndPort); //XXXESG DEBUG
         }
         sendResponse(exch, response);
         return;
@@ -39,6 +42,7 @@ private void doView (HttpExchange exch)
 
     if (method.equals("GET")) {
         String resmsg = this.nodeViewAsJSON();
+        System.out.println("resmsg: " + resmsg);
         response = new POJOResHttp(200, resmsg);
     } else if ((method.equals("PUT")) || (method.equals("POST"))) {
         //TODO: make sure newnode isn't null
@@ -50,21 +54,11 @@ private void doView (HttpExchange exch)
             resbody.msg = newnode + " already in view";
             response = new POJOResHttp(404, resbody.toJSON());
         } else {
-            POJOResHttp joinres = sendJoinTo(newnode);
-            if (joinres.resCode == 200) {
                 POJOResBody resbody = new POJOResBody(true, "node added");
                 resbody.debug = newnode;
                 resbody.result = "Success";
                 resbody.msg = "Successfully added " + newnode + " to view";
                 response = new POJOResHttp(200, resbody.toJSON());
-            } else {
-                //XXX: it would be very very strange if this happened
-                POJOResBody resbody = new POJOResBody(false, "view update failed");
-                resbody.debug = newnode;
-                resbody.result = "Error";
-                resbody.msg = "Added " + newnode + " to cluster, but couldn't update view";
-                response = new POJOResHttp(500, resbody.toJSON());
-            }
         }
     } else if (method.equals("DELETE")) {
         boolean success = this.removeFromView(newnode);
