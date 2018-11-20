@@ -21,105 +21,106 @@ public void handle (HttpExchange exch) throws IOException
 
     //get consensus about everything that's happened up to and 
     //including this most recent request
-    PaxosResponse response = new PaxosResponse();
+    PaxosResponse paxosres = new PaxosResponse();
     while (this.hasProposalQueue()) {
+         //sleep a random brief time to reduce the risk of duelling proposers
         try {
             int sleeptime = (int)(Math.random() * 80); //0-80ms
-            System.out.println("sleeping " + sleeptime + "ms!!");
             Thread.sleep(sleeptime);
         } catch (InterruptedException e) {
             //do nothing
         }
         try {
-            response = doPaxosProposal(this.popProposal());
-            if (response.resCode == 409) {
+            paxosres = doPaxosProposal(this.popProposal());
+            if (paxosres.resCode == 409) {
                 //the proposal was refused because it was too old
                 //TODO: use history in the resbody to catch up
-                System.out.println("total history: " + response.reqHistory);
                 this.pushProposal(request);
-            } else if (response.resCode == 200) {
-                //the proposal was successful
-                System.out.println("success!");
-                break;
-            } else {
-                //a known bad thing happened while doing the request
-                System.out.println("proposal failed, rescode: " + response.resCode);
-                break;
+                POJOHistory history = POJOHistory.fromJSON(paxosres.reqHistory);
+                this.replayHistory(history);
+            } else if (paxosres.resCode == 522) {
+                System.err.println("WARNING: Incomplete commit.\n" + 
+                                   "Implement reliable broadcast on commit to resolve this warning.");
             }
         } catch (TimeoutException e) {
             //push the proposal back on the stack to try again
+            System.out.println("proposal timed out: " + paxosres.toString());
             this.pushProposal(request);
-            response.resCode = 503;
-            System.out.println("proposal timed out: " + response.toString());
+            paxosres.resCode = 503;
         } catch (Exception e) {
-            this.pushProposal(request);
             System.out.println("Something terrible happened.");
+            this.pushProposal(request);
             e.printStackTrace();
-            response.resCode = 500;
+            paxosres.resCode = 500;
         }
     }
     if (this.hasProposalQueue()) {
         System.out.println(requestBuffer.size() + " requests not committed!!");
     }
-    POJOResHttp res = new POJOResHttp(response.resCode, this.historyAsJSON());
+    System.out.println("responding with causal history");
+    String history = this.getHistoryAsJSON();
+    POJOResHttp res = new POJOResHttp(paxosres.resCode, history);
     sendResponse(exch, res);
 }
 
 private PaxosResponse doPaxosProposal (String request) throws TimeoutException
 {
     //prepare
-    PaxosResponse response;
+    PaxosResponse paxosres;
     int seqnum = this.incrementSequenceNumber();
+    int reqindex = this.reqHistory.nextIndex();
     String value = null;
 
-    response = sendPrepare(seqnum);
-    if (!response.canProceed) {
-        System.out.println("prepare failed");
-        return response;
+    paxosres = sendPrepare(seqnum, reqindex);
+    if (!paxosres.canProceed) {
+//        System.out.println("prepare failed");
+//        System.out.println("proposal: " + paxosres);
+        return paxosres;
     }
 
-    value = response.accValue;
+    value = paxosres.accValue;
     if (value == null) {
         //no value has been chosen, so it's okay to propose one
         value = request;
     }
-    System.out.println(log("agreed on: '" + value.substring(0, 25) + "'"));
+    System.err.println(log("agreed on: '" + value.substring(22) + "'"));
 
     //accept
-    response = sendAccept(seqnum, value);
-    if (!response.canProceed) {
-        System.out.println("accept failed");
-        return response;
+    paxosres = sendAccept(seqnum, reqindex, value);
+    if (!paxosres.canProceed) {
+//        System.out.println("accept failed");
+        return paxosres;
     }
 
-    if (response.seqNum != seqnum) {
-        System.out.println("no longer leader");
-        return response;
+    if (paxosres.seqNum != seqnum) {
+//        System.out.println("no longer leader");
+        return paxosres;
     }
 
     //commit
-    boolean finished = sendCommit(seqnum, value);
+    boolean finished = sendCommit(seqnum, reqindex, value);
     if (!finished) {
-        response.resCode = 522;
-        System.out.println("commit failed");
-        return response;
+        paxosres.resCode = 522;
+//        System.out.println("commit failed");
+        return paxosres;
     }
-    response.resCode = 200;
-    System.out.println("consensus!: " + response.toString());
-    return response;
+    paxosres.resCode = 200;
+//    System.out.println("consensus!: " + paxosres.toString());
+    return paxosres;
 }
 
-private PaxosResponse sendPrepare (int seqnum) throws TimeoutException
+private PaxosResponse sendPrepare (int seqnum, int reqindex) 
+        throws TimeoutException
 {
     String value = null;
-    POJOPaxosBody prop = new POJOPaxosBody(seqnum, value);
+    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, value);
 
     PaxosResponse paxosres = new PaxosResponse();
 
-    System.out.println(log("preparing: " + prop.toJSON()));
+    System.err.println(log("preparing: " + prop.toJSON()));
 
     //broadcast prepare to cluster
-    Client[] multi = Client.readyMulticast(this.nodeView, 
+    Client[] multi = Client.readyMulticast(this.getNodeView(), 
                                            "POST", "/paxos/acceptor/prepare", 
                                            prop.toJSON());
     for (Client cl : multi) {
@@ -149,7 +150,8 @@ private PaxosResponse sendPrepare (int seqnum) throws TimeoutException
     int votenum = 0;
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
-        if (res.resCode == 200) {
+        paxosres.resCode = res.resCode;
+        if (paxosres.resCode == 200) {
             POJOPaxosBody result = POJOPaxosBody.fromJSON(res.resBody);
             if (result.accValue != null) {
                 paxosres.accValue = result.accValue;
@@ -158,14 +160,16 @@ private PaxosResponse sendPrepare (int seqnum) throws TimeoutException
             } else {
                 votenum += 1;
             }
-        } else if (res.resCode == 409) {
+        } else if (paxosres.resCode == 409) {
             //the response was old--get the more up-to-date history
             POJOResBody resbody = POJOResBody.fromJSON(res.resBody);
             paxosres.reqHistory = resbody.info;
             paxosres.canProceed = false;
         } else {
-            //Acceptor only returns rescode 200 or 409
-            paxosres.canProceed = false;
+            /*
+             *  Acceptor only returns 200 or 409, so any other rescode means 
+             *  something bad happened. Just drop the response on the floor.
+             */
         }
     }
 
@@ -176,12 +180,13 @@ private PaxosResponse sendPrepare (int seqnum) throws TimeoutException
     return paxosres;
 }
 
-private PaxosResponse sendAccept (int seqnum, String request) throws TimeoutException
+private PaxosResponse sendAccept (int seqnum, int reqindex, String request) 
+        throws TimeoutException
 {
-    POJOPaxosBody prop = new POJOPaxosBody(seqnum, request);
+    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, request);
     PaxosResponse paxosres = new PaxosResponse();
 
-    Client[] multi = Client.readyMulticast(this.nodeView, 
+    Client[] multi = Client.readyMulticast(this.getNodeView(), 
                                            "POST", "/paxos/acceptor/accept", 
                                            prop.toJSON());
     for (Client cl : multi) {
@@ -206,39 +211,39 @@ private PaxosResponse sendAccept (int seqnum, String request) throws TimeoutExce
     //process the responses
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
-        if (res.resCode == 200) {
+        paxosres.resCode = res.resCode;
+        if (paxosres.resCode == 200) {
             POJOPaxosBody result = POJOPaxosBody.fromJSON(res.resBody);
             if (result.seqNum > paxosres.seqNum) {
                 //accept the newer proposal
                 paxosres.seqNum = result.seqNum;
             }
-        } else if (res.resCode == 409) {
+        } else if (paxosres.resCode == 409) {
             //the response was old--get the more up-to-date history
             POJOResBody resbody = POJOResBody.fromJSON(res.resBody);
             paxosres.reqHistory = resbody.info;
             paxosres.canProceed = false;
         } else {
-            //Acceptor only returns rescode 200 or 409
-            paxosres.canProceed = false;
+            /*
+             *  Acceptor only returns 200 or 409, so any other rescode means 
+             *  something bad happened. Just drop the response on the floor.
+             */
         }
     }
 
     return paxosres;
 }
 
-private boolean sendCommit (int seqnum, String value)
+private boolean sendCommit (int seqnum, int reqindex, String value)
 {
-    POJOPaxosBody prop = new POJOPaxosBody(seqnum, value);
-    PaxosResponse paxosres = new PaxosResponse();
-
-    Client[] multi = Client.readyMulticast(this.nodeView, 
+    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, value);
+    Client[] multi = Client.readyMulticast(this.getNodeView(), 
                                            "POST", "/paxos/acceptor/commit", 
                                            prop.toJSON());
 
     for (Client cl : multi) {
         cl.fireAsync();
     }
-
     while (!Client.done(multi)) {
         try {
             Thread.sleep(200); //sleep 200ms
@@ -248,13 +253,13 @@ private boolean sendCommit (int seqnum, String value)
     }
 
     //process the responses
-    int latestseqnum = 0;
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
         if ((res.resCode < 200) || (res.resCode >= 300)) {
             //commit failed--resend
             //TODO: resend until successful
-            System.out.println("got bad rescode " + res.resCode);
+            System.out.println("got rescode " + res.resCode + " from " + cl.getDestIP());
+            System.out.println("resbody: " + res.resBody);
             return false;
         }
     }

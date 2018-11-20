@@ -1,29 +1,26 @@
 public class DockerTester {
 
 
-public static void
-main (String[] args)
-{
-    String[] nodes = {"localhost:4002", "localhost:4005"};
+public static String[] view = {"10.0.0.2:4002", 
+                               "10.0.0.3:4003", "10.0.0.4:4004", 
+//                               "10.0.0.5:4005", "10.0.0.6:4006", 
+//                               "10.0.0.7:4007", "10.0.0.8:4008"
+                               };
 
-/*
 //broadcast hello world
-    Client[] multi = Client.readyMulticast(nodes, "GET", "/hello", null);
+public static void test_hello ()
+{
+    Client[] multi = Client.readyMulticast(view, "GET", "/hello", null);
     for (Client cl : multi) {
         cl.doSync();
         System.out.println(cl.getDestIP() + ": " + cl.getResponse().resBody);
     }
-*/
+}
 
-/*
-//on nodes[0], paxos/propose: "{
-//                                index: 0, //HERE
-//                                method: 'PUT', 
-//                                service: '/keyValue-store/foo', 
-//                                body: "{val: 'bar'"}'
-//                            }"
-    String reqbody = "{method: 'PUT', service: '/keyValue-store/foo', body: \"{val: 'bar'}\"}";
-    Client cl = new Client(nodes[0], "POST", "/paxos/proposer", reqbody);
+//on view[0], foo=bar
+public static void test_put_key (String key, String val)
+{
+    Client cl = new Client(view[0], "POST", "/keyValue-store/" + key, "{val: '" + val + "'}");
     cl.fireAsync();
     while (!cl.done()) {
         try {
@@ -32,272 +29,80 @@ main (String[] args)
             //do nothing
         }
     }
-    System.out.println(nodes[0] + ": " + cl.getResponse().resBody);
-*/
+    System.out.println(view[0] + ": " + cl.getResponse().resBody);
+}
 
+//propose messages concurrently
+public static void test_concurrent_put (String[] nodes, String[] keys, String[] vals) {
+    Client[] clients = new Client[keys.length];
+    for (int i = 0; i < clients.length; i += 1) {
+        Client cl = new Client(nodes[i], "POST", "/keyValue-store/" + keys[i], "{val: '" + vals[i] + "'}");
+        clients[i] = cl;
+        cl.fireAsync();
+    }
+
+    while (!Client.done(clients)) {
+        try {
+            Thread.sleep(200); //sleep 200ms
+        } catch(InterruptedException e) {
+            //do nothing
+        }
+    }
+
+    for (int i = 0; i < clients.length; i += 1) {
+        System.out.println(nodes[i] + ": " + clients[i].getResponse().resBody);
+    }
+}
+
+//get current view
+public static void test_get_view ()
+{
+    Client cl = new Client(view[0], "GET", "/view", null);
+    cl.doSync();
+    System.out.println(cl.getDestIP() + ": " + cl.getResponse().resBody);
+}
+
+//add node to view
+public static void test_add_view (String ipport)
+{
+    Client cl = new Client(view[0], "PUT", "/view", "{ip_port: '" + ipport + "'}");
+    cl.doSync();
+
+    cl = new Client(view[0], "GET", "/view", null);
+    cl.doSync();
+    System.out.println(cl.getDestIP() + ": " + cl.getResponse().resBody);
+}
+
+//delete node from view
+public static void test_delete_view (String ipport)
+{
+    Client cl = new Client(view[0], "DELETE", "/view", "{ip_port: '" + ipport + "'}");
+    cl.doSync();
+
+    cl = new Client(view[0], "GET", "/view", null);
+    cl.doSync();
+    System.out.println(cl.getDestIP() + ": " + cl.getResponse().resBody);
+}
+
+public static void
+main (String[] args)
+{
+    String[] testnodes = {view[0], view[2]};
+
+//    test_hello();
+//    test_put_key("foo", "bar");
+//    test_concurrent_put(nodes, {"key1", "key2"}, {"val1", "val2"});
 /*
-//on nodes[0] and nodes[1], concurrently paxos/propose
-    String reqbody1 = "{method: 'PUT', service: '/keyValue-store/key4002', body: \"{val: 'test4002'}\"}";
-    String reqbody2 = "{method: 'PUT', service: '/keyValue-store/key4003', body: \"{val: 'test4003'}\"}";
-    Client cl1 = new Client(nodes[0], "POST", "/paxos/proposer", reqbody1);
-    Client cl2 = new Client(nodes[1], "POST", "/paxos/proposer", reqbody2);
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody);
+    test_concurrent_put(testnodes, {"key1.1st", "key2.1st"}, 
+                                   {"Quetzacotl", "Shiva"});
+    test_concurrent_put(testnodes, {"key1.2nd", "key2.2nd"}, 
+                                   {"Ifrit", "Siren"});
+    test_concurrent_put(testnodes, {"key1.3rd", "key2.3rd"}, 
+                                   {"Brothers", "Diablo"});
 */
-
-/*
-//on nodes[0], paxos/propose three different messages in sequence
-    String[] messages = new String[3];
-    messages[0] = "{method: 'PUT', service: '/keyValue-store/seq1', body: \"{val: 'value1'}\"}";
-    messages[1] = "{method: 'PUT', service: '/keyValue-store/seq2', body: \"{val: 'value2'}\"}";
-    messages[2] = "{method: 'PUT', service: '/keyValue-store/seq3', body: \"{val: 'value3'}\"}";
-    Client cl1 = new Client(nodes[0], "POST", "/paxos/proposer", messages[0]);
-    cl1.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-
-    Client cl2 = new Client(nodes[0], "POST", "/paxos/proposer", messages[1]);
-    cl2.fireAsync();
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl2.getResponse().resBody);
-
-    Client cl3 = new Client(nodes[0], "POST", "/paxos/proposer", messages[2]);
-    cl3.fireAsync();
-    while (!cl3.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl3.getResponse().resBody);
-*/
-
-/*
-//on nodes[0], paxos/propose three different concurrent messages in sequence
-    String[] msgs1 = new String[3];
-    msgs1[0] = "{method: 'PUT', service: '/keyValue-store/key1', body: \"{val: 'value1'}\"}";
-    msgs1[1] = "{method: 'GET', service: '/keyValue-store/key1', body: null}";
-    msgs1[2] = "{method: 'DELETE', service: '/keyValue-store/key1', body: null}";
-    String[] msgs2 = new String[3];
-    msgs2[0] = "{method: 'PUT', service: '/keyValue-store/key2', body: \"{val: 'value2'}\"}";
-    msgs2[1] = "{method: 'GET', service: '/keyValue-store/key2', body: null}";
-    msgs2[2] = "{method: 'DELETE', service: '/keyValue-store/key2', body: null}";
-    Client cl1 = new Client(nodes[0], "POST", "/paxos/proposer", msgs1[0]);
-    Client cl2 = new Client(nodes[1], "POST", "/paxos/proposer", msgs2[0]);
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody.substring(0, 60));
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody.substring(0, 60));
-
-    cl1 = new Client(nodes[0], "POST", "/paxos/proposer", msgs1[1]);
-    cl2 = new Client(nodes[1], "POST", "/paxos/proposer", msgs2[1]);
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody.substring(0, 60));
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody.substring(0, 60));
-
-    cl1 = new Client(nodes[0], "POST", "/paxos/proposer", msgs1[2]);
-    cl2 = new Client(nodes[1], "POST", "/paxos/proposer", msgs2[2]);
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody.substring(0, 60));
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody.substring(0, 60));
-*/
-
-/*
-//on nodes[0], paxos/propose an API call: "PUT /keyValue-store/foo {val: 'bar'}"
-    String json = "{"
-                + "method: " + "'" + "PUT" + "'" + ", "
-                + "service: " + "'" + "/keyValue-store/foo" + "'" + ", "
-                + "body: " + "'" + "{val: 'bar'}" + "'" + ", "
-                + "}";
-    String reqbody = "this is a test";
-    Client cl = new Client(nodes[0], "POST", "/paxos/proposer", json);
-    cl.fireAsync();
-    while (!cl.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl.getResponse().resBody);
-*/
-
-/*
-//on nodes[0], foo=bar
-    Client cl = new Client(nodes[0], "POST", "/keyValue-store/foo", "{val: 'bar'}");
-    cl.fireAsync();
-    while (!cl.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl.getResponse().resBody);
-*/
-
-/**/
-//propose a message concurrently on two nodes
-    Client cl1 = new Client(nodes[0], "POST", "/keyValue-store/key1", "{val: 'val1'}");
-    Client cl2 = new Client(nodes[1], "POST", "/keyValue-store/key2", "{val: 'val2'}");
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody);
-/**/
-
-/*
-//propose three sequential messages concurrently on two nodes
-    Client cl1 = new Client(nodes[0], "POST", "/keyValue-store/key1.first", "{val: 'val1'}");
-    Client cl2 = new Client(nodes[1], "POST", "/keyValue-store/key2.first", "{val: 'val2'}");
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody);
-
-    cl1 = new Client(nodes[0], "POST", "/keyValue-store/key1.second", "{val: 'val1'}");
-    cl2 = new Client(nodes[1], "POST", "/keyValue-store/key2.second", "{val: 'val2'}");
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody);
-
-    cl1 = new Client(nodes[0], "POST", "/keyValue-store/key1.third", "{val: 'val1'}");
-    cl2 = new Client(nodes[1], "POST", "/keyValue-store/key2.third", "{val: 'val2'}");
-    cl1.fireAsync();
-    cl2.fireAsync();
-    while (!cl1.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    while (!cl2.done()) {
-        try {
-            Thread.sleep(200); //sleep 200ms
-        } catch(InterruptedException e) {
-            //do nothing
-        }
-    }
-    System.out.println(nodes[0] + ": " + cl1.getResponse().resBody);
-    System.out.println(nodes[1] + ": " + cl2.getResponse().resBody);
-*/
+//    test_get_view();
+    test_add_view("10.0.0.9:4009");
+//    test_delete_view(view[1]);
 
 }
 

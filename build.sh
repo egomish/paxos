@@ -8,7 +8,7 @@ javac -cp gson-2.8.5.jar:. SmallServer.java \
                            ContextHello.java ContextTest.java \
                            \
                            ContextKVS.java \
-                           POJOReqBody.java POJOResBody.java \
+                           POJOKeyValBody.java POJOResBody.java \
                            \
                            ContextPaxosProposer.java ContextPaxosAcceptor.java \
                            POJOPaxosBody.java \
@@ -16,5 +16,9 @@ javac -cp gson-2.8.5.jar:. SmallServer.java \
                            \
                            ContextHistory.java \
                            POJOHistory.java \
+                           \
+                           ContextView.java \
+                           ContextJoin.java \
+                           POJOViewHistory.java \
                            \
 

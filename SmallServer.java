@@ -2,7 +2,7 @@ import java.net.InetSocketAddress;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.OutputStream;
-import java.util.HashMap;
+import java.util.HashSet;
 
 
 public class SmallServer {
@@ -88,18 +88,95 @@ protected void sendResponse (HttpExchange exch, POJOResHttp res)
     }
 }
 
-protected void addToHistory (int seqnum, String request)
+protected String[] getNodeView ()
 {
-    reqHistory.history.put(seqnum, request);
+    return nodeView.toArray(new String[0]);
 }
 
-protected String getHistoryAt (int seqnum)
+protected String getNodeViewAsString ()
 {
-    String request = reqHistory.history.get(seqnum);
+    String view = "";
+    for (String node : this.getNodeView()) {
+        view += node + ",";
+    }
+    view = view.substring(0, view.length() - 1);
+    return view;
+}
+
+protected String nodeViewAsString ()
+{
+    String str = "";
+    for (String node : this.getNodeView()) {
+        str += node + ",";
+    }
+    str = str.substring(0, str.length() - 1);
+    return str;
+}
+
+protected boolean addToView (String ipport)
+{
+    return nodeView.add(ipport);
+}
+
+protected boolean removeFromView (String ipport)
+{
+    return nodeView.remove(ipport);
+}
+
+protected String nodeViewAsJSON ()
+{
+    String str = "";
+    str += "{";
+    str += "view: ";
+    for (String node : this.nodeView) {
+        str += node + ",";
+    }
+    str = str.substring(0, str.length() - 1);
+    str += "}";
+    return str;
+}
+
+protected void addToHistoryAt (int reqindex, String request)
+{
+    reqHistory.history.put(reqindex, request);
+}
+
+protected String getHistoryAt (int reqindex)
+{
+    String request = reqHistory.history.get(reqindex);
     return request;
 }
 
-protected String historyAsJSON ()
+protected void replayHistory (POJOHistory pojo)
+{
+    System.err.println(log("replaying history..."));
+    //reset the key-value store so history can be replayed
+    ContextKVS.kvStore.clear();
+    //no need to reset the view--it's a set, so repeating requests has no effect
+    this.nodeView = this.nodeView;
+
+    for (int i = 0; i < pojo.history.size(); i += 1) {
+        String req = pojo.history.get(i);
+        if (req == null) {
+            //no request was specified for this index--wait to keep replaying
+            //XXX: when could this possibly happen?
+            System.err.println("no request for index " + i + ".");
+            break;
+        }
+        POJOReqHttp request = POJOReqHttp.fromJSON(req);
+        String ip = ipAndPort;
+        String method = request.method;
+        String service = request.service;
+        service += "?consensus=true"; //XXXESG DEBUG
+        String body = request.body;
+        Client cl = new Client(ip, method, service, body);
+        cl.doSync();
+        POJOResHttp response = cl.getResponse();
+        printLog("replayed " + request.method + " " + request.service);
+    }
+}
+
+protected String getHistoryAsJSON ()
 {
     String json = reqHistory.toJSON();
     return json;
@@ -130,11 +207,14 @@ private static void initServer ()
      *  For creating a view of the distributed system.
      */
     String nodes = System.getenv().get("VIEW");
+    nodeView = new HashSet<String>();
     if (nodes == null) {
-        nodeView = new String[1];
-        nodeView[0] = ipAndPort;
+        nodeView.add(ipAndPort);
     } else {
-        nodeView = nodes.split(",");
+        String[] view = nodes.split(",");
+        for (String node : view) {
+            nodeView.add(node);
+        }
     }
 
     /*
@@ -197,6 +277,8 @@ main(String[] args) throws Exception
     server.createContext("/paxos/proposer", new ContextPaxosProposer());
     server.createContext("/paxos/acceptor", new ContextPaxosAcceptor());
     server.createContext("/history", new ContextHistory());
+    server.createContext("/view", new ContextView());
+    server.createContext("/join", new ContextJoin());
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -213,7 +295,7 @@ main(String[] args) throws Exception
 public static String ipAndPort;
 public static int processID;
 
-public static String[] nodeView;
+public static HashSet<String> nodeView;
 
 public static String primaryIPAddress;
 public static boolean isPrimary;

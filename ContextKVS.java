@@ -26,14 +26,13 @@ public void handle (HttpExchange exch) throws IOException
     if ((query == null) || (!query.equals("consensus=true"))) {
         POJOResHttp response = doProposal(exch);
         if (response.resCode != 200) {
-            throw new IndexOutOfBoundsException();
+            throw new UnsupportedOperationException();
         }
         sendResponse(exch, response.resCode, response.resBody);
         return;
-    } else {
-        doKVS(exch);
     }
 
+    doKVS(exch);
 }
 
 //XXX: if key contains '/' characters, key will be parsed as just the 
@@ -54,7 +53,7 @@ private static String parseKeyFromPath (String path)
 private static String parseValueFromRequest (HttpExchange exch)
 {
     String body = Client.fromInputStream(exch.getRequestBody());
-    POJOReqBody reqbody = POJOReqBody.fromJSON(body);
+    POJOKeyValBody reqbody = POJOKeyValBody.fromJSON(body);
     String value = reqbody.val;
 
     String contenttype = exch.getRequestHeaders().getFirst("Content-type");
@@ -227,6 +226,6 @@ protected ContextKVS()
 }
 
 
-private static HashMap<String, String> kvStore;
+public static HashMap<String, String> kvStore;
 
 }

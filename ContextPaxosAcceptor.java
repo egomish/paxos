@@ -37,13 +37,13 @@ private void doPaxosAcceptorPrepare (HttpExchange exch)
         this.seqNum = recv.seqNum;
         printLog(recv.seqNum + " -> ACK(prepare)");
         //XXX: only seqnum is required
-        POJOPaxosBody resbody = new POJOPaxosBody(this.seqNum, this.accValue);
+        POJOPaxosBody resbody = new POJOPaxosBody(recv.reqIndex, this.seqNum, this.accValue);
         response = new POJOResHttp(200, resbody.toJSON());
     } else {
         //the recv proposal is old--refuse it
         //but also send request history so the tardy node can catch up
         printLog(recv.seqNum + " -> NAK(" + this.seqNum + ").");
-        String info = this.historyAsJSON();
+        String info = this.getHistoryAsJSON();
         POJOResBody resbody = new POJOResBody(false, info);
         response = new POJOResHttp(409, resbody.toJSON());
     }
@@ -62,13 +62,13 @@ private void doPaxosAcceptorAccept (HttpExchange exch)
         this.seqNum = recv.seqNum;
         this.accValue = recv.accValue;
         printLog(recv.seqNum + " -> ACK(accept)");
-        POJOPaxosBody resbody = new POJOPaxosBody(this.seqNum, this.accValue);
+        POJOPaxosBody resbody = new POJOPaxosBody(recv.reqIndex, this.seqNum, this.accValue);
         response = new POJOResHttp(200, resbody.toJSON());
     } else {
         //discard the offered proposal because it's outdated
         //but return requestHistory so the tardy node can catch up
         printLog(recv.seqNum + " -> NAK(" + this.toString() + ").");
-        response = new POJOResHttp(409, this.historyAsJSON());
+        response = new POJOResHttp(409, this.getHistoryAsJSON());
     }
     sendResponse(exch, response);
 }
@@ -79,7 +79,7 @@ private void doPaxosAcceptorCommit (HttpExchange exch)
     POJOPaxosBody recv = POJOPaxosBody.fromJSON(reqbody);
 
     //store accepted value in requestHistory
-    this.addToHistory(recv.seqNum, recv.accValue);
+    this.addToHistoryAt(recv.reqIndex, recv.accValue);
 
     //parse the committed value into an API call
     //XXX: if the client set the ip, it'll be clobbered
@@ -97,7 +97,7 @@ private void doPaxosAcceptorCommit (HttpExchange exch)
     cl.doSync();
 
     POJOResHttp response = cl.getResponse();
-    printLog(recv.seqNum + " -> ACK(commit: " + request.method + ")");
+    printLog(recv.seqNum + " -> ACK(committed " + request.method + ")");
     sendResponse(exch, response);
 }
 

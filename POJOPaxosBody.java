@@ -20,15 +20,17 @@ public static POJOPaxosBody fromJSON (String json)
 
 public POJOPaxosBody ()
 {
-    this(null, null);
+    this(null, null, null);
 }
 
-public POJOPaxosBody (Integer s, String a)
+public POJOPaxosBody (Integer r, Integer s, String a)
 {
+    reqIndex = r;
     seqNum = s;
     accValue = a;
 }
 
+public Integer reqIndex;
 public Integer seqNum;
 public String accValue;
 

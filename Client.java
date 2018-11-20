@@ -139,7 +139,7 @@ private void sendAsync ()
     try {
         url = new URL("http://" + urlstr);
     } catch (MalformedURLException e) {
-        System.err.println("malformed url: " + e.getMessage());
+        System.err.println("[" + urlstr + "] malformed url: " + e.getMessage());
         resCode = 400;
         resBody = POJOResBody.clientError().toJSON();
         return;
@@ -149,7 +149,7 @@ private void sendAsync ()
     try {
         conn = (HttpURLConnection)url.openConnection();
     } catch (IOException e) {
-        System.err.println("could not connect: " + e.getMessage());
+        System.err.println("[" + url + "] could not connect: " + e.getMessage());
         resCode = 400;
         resBody = POJOResBody.clientError().toJSON();
         return;
@@ -158,7 +158,7 @@ private void sendAsync ()
     try {
         conn.setRequestMethod(request.method);
     } catch (ProtocolException e) {
-        System.err.println("bad method: " + e.getMessage());
+        System.err.println("[" + url + "] bad method: " + e.getMessage());
         resCode = 400;
         resBody = POJOResBody.clientError().toJSON();
         return;
@@ -174,7 +174,7 @@ private void sendAsync ()
             out.close();
         }
     } catch (IOException e) {
-        System.err.println("could not create body: " + e.getMessage());
+        System.err.println("[" + request.ip + "] could not create body: " + e.getMessage());
         resCode = 500;
         resBody = POJOResBody.serverError().toJSON();
         return;
@@ -184,11 +184,11 @@ private void sendAsync ()
     try {
         conn.connect();
     } catch (ConnectException e) {
-        System.err.println("server at " + url + " is down: " + e.getMessage());
+        System.err.println("[" + request.ip + "] is down: " + e.getMessage());
         resCode = 501;
         resBody = POJOResBody.serverError().toJSON();
     } catch (NoRouteToHostException e) {
-        System.err.println("server at " + url + " not reachable: " + e.getMessage());
+        System.err.println("[" + request.ip + "] not reachable: " + e.getMessage());
         resCode = 501;
         resBody = POJOResBody.serverError().toJSON();
         return;
@@ -207,7 +207,7 @@ private void receiveAsync ()
     try {
         resCode = conn.getResponseCode();
     } catch (IOException e) {
-        System.err.println("bad rescode while handling response to " + url);
+        System.err.println("[" + request.ip + "] bad rescode: " + e.getMessage());
         resCode = 500;
         resBody = POJOResBody.serverError().toJSON();
         return;
@@ -223,7 +223,7 @@ private void receiveAsync ()
             in = conn.getErrorStream();
         }
     } catch (IOException e) {
-        System.err.println("bad response body: " + e.getMessage());
+        System.err.println("[" + request.ip + "] bad resbody: " + e.getMessage());
         resCode = 500;
         resBody = POJOResBody.serverError().toJSON();
         return;
@@ -232,7 +232,7 @@ private void receiveAsync ()
     //store response
     resBody = Client.fromInputStream(in);
     if (resBody == null) {
-        System.err.println("failed to read response body");
+        System.err.println("[" + request.ip + "] failed to read response body");
         resCode = 500;
         resBody = POJOResBody.serverError().toJSON();
         return;

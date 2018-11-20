@@ -44,6 +44,7 @@ public POJOResBody (boolean s, String i)
     value = null;
     error = null;
     isExist = null;
+    result = null;
 }
 
 public boolean success;
@@ -56,5 +57,8 @@ public String msg;
 public String value;
 public String error;
 public String isExist;
+
+//required to conform to HW3 spec
+public String result;
 
 }
