@@ -19,9 +19,10 @@ public void handle (HttpExchange exch) throws IOException
     String request = Client.fromInputStream(exch.getRequestBody());
     this.queueProposal(request);
 
+    PaxosProposal proposal = null;
+
     //get consensus about everything that's happened up to and 
     //including this most recent request
-    PaxosResponse paxosres = new PaxosResponse();
     while (this.hasProposalQueue()) {
          //sleep a random brief time to reduce the risk of duelling proposers
         try {
@@ -31,92 +32,91 @@ public void handle (HttpExchange exch) throws IOException
             //do nothing
         }
         try {
-            paxosres = doPaxosProposal(this.popProposal());
-            if (paxosres.resCode == 409) {
+            //do some paxos!
+try {
+            proposal = doPaxosProposal(this.popProposal());
+            if (!proposal.canProceed) {
                 //the proposal was refused because it was too old
+                //but the returned proposal is the next one we're missing
                 this.pushProposal(request);
-                POJOHistory history = POJOHistory.fromJSON(paxosres.reqHistory);
-                this.replayHistory(history);
-            } else if (paxosres.resCode == 522) {
-                System.err.println("WARNING: Incomplete commit.\n" + 
-                                   "Implement reliable broadcast on commit to resolve this warning.");
-            } else {
-                System.out.println("paxosres: " + paxosres.toString());
+                if (proposal.accValue != null) {
+                    System.out.println("catching up at " + reqIndex);
+                    this.addToHistoryAt(proposal.reqIndex, proposal.accValue);
+                }
             }
         } catch (TimeoutException e) {
-            //push the proposal back on the stack to try again
-            System.out.println("proposal timed out: " + paxosres.toString());
+            //the proposal failed because of a network partition
             this.pushProposal(request);
-            paxosres.resCode = 503;
-        } catch (Exception e) {
-            System.out.println("Something terrible happened.");
-            this.pushProposal(request);
+        } catch (IllegalStateException e) {
+            //the request was committed, but not every node knows
+            System.err.println("WARNING: commit incomplete");
             e.printStackTrace();
-            paxosres.resCode = 500;
         }
+} catch (Exception e) {
+    e.printStackTrace();
+    System.exit(8);
+}
     }
-    if (this.hasProposalQueue()) {
-        System.out.println(requestBuffer.size() + " requests not committed!!");
-    }
-    String history = this.getHistoryAsJSON();
-    POJOResHttp res = new POJOResHttp(paxosres.resCode, history);
-    sendResponse(exch, res);
+    //XXX: what if proposal is null?
+    String info = Integer.toString(proposal.reqIndex);
+    POJOResBody resbody = new POJOResBody(true, info);
+    sendResponse(exch, 200, resbody.toJSON());
 }
 
-private PaxosResponse doPaxosProposal (String request) throws TimeoutException
-{
-    //prepare
-    PaxosResponse paxosres;
-    int seqnum = this.incrementSequenceNumber();
-    int reqindex = this.reqHistory.nextIndex();
-    String value = null;
-
-    paxosres = sendPrepare(seqnum, reqindex);
-    if (!paxosres.canProceed) {
-//        System.out.println("prepare failed");
-//        System.out.println("proposal: " + paxosres);
-        return paxosres;
-    }
-
-    value = paxosres.accValue;
-    if (value == null) {
-        //no value has been chosen, so it's okay to propose one
-        value = request;
-    }
-    System.err.println(log("agreed on: '" + value.substring(22) + "'"));
-
-    //accept
-    paxosres = sendAccept(seqnum, reqindex, value);
-    if (!paxosres.canProceed) {
-//        System.out.println("accept failed");
-        return paxosres;
-    }
-
-    if (paxosres.seqNum != seqnum) {
-//        System.out.println("no longer leader");
-        return paxosres;
-    }
-
-    //commit
-    boolean finished = sendCommit(seqnum, reqindex, value);
-    if (!finished) {
-        paxosres.resCode = 522;
-        System.out.println("commit failed");
-        return paxosres;
-    }
-    paxosres.resCode = 200;
-    System.out.println("consensus!: " + paxosres.toString());
-    return paxosres;
-}
-
-private PaxosResponse sendPrepare (int seqnum, int reqindex) 
+private PaxosProposal doPaxosProposal (String request)
         throws TimeoutException
 {
+    /*
+     *  Prepare.
+     */
+    PaxosProposal proposal = new PaxosProposal();
+    proposal.seqNum = this.incrementSequenceNumber();
+    proposal.reqIndex = this.getNextHistoryIndex();
     String value = null;
-    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, value);
 
-    PaxosResponse paxosres = new PaxosResponse();
+    proposal = sendPrepare(proposal);
+    if (!proposal.canProceed) {
+        //reqIndex was already agreed on--add that proposal to history
+        System.out.println("reqIndex " + proposal.reqIndex + " was already agreed on");
+        return proposal;
+    }
 
+    value = proposal.accValue;
+    if (value == null) {
+        //no value has been chosen, so it's okay to propose one
+        proposal.accValue = request;
+    }
+    System.err.println(log("agreed on proposal " + proposal.seqNum));
+
+    /*
+     *  Accept.
+     */
+    proposal = sendAccept(proposal);
+    if (!proposal.canProceed) {
+        //someone else is proposing too--propose again, but make sure
+        //the aborted proposal doesn't get added
+        proposal.accValue = null;
+        return proposal;
+    }
+
+    /*
+     *  Consensus! Broadcast the accepted proposal.
+     */
+    boolean finished = sendCommit(proposal);
+    if (!finished) {
+        //TODO: use reliable broadcast to ensure this never happens
+        System.err.println("commit failed--system may be inconsistent");
+        throw new IllegalStateException();
+    }
+    return proposal;
+}
+
+private PaxosProposal sendPrepare (PaxosProposal proposal)
+        throws TimeoutException
+{
+    POJOPaxosBody prop = new POJOPaxosBody(proposal.seqNum, 
+                                           proposal.reqIndex, 
+                                           proposal.accValue);
     System.err.println(log("preparing: " + prop.toJSON()));
 
     //broadcast prepare to cluster
@@ -127,13 +127,6 @@ private PaxosResponse sendPrepare (int seqnum, int reqindex)
         cl.fireAsync();
     }
 
-    /*
-     *  The Paxos algorithm only needs to wait for a majority of responses, 
-     *  but realistically because this program is implemented using Java (with 
-     *  exception handling for errors) on top of TCP (a reliable protocol), 
-     *  we're going to hear back from all of the nodes--although we can't (and 
-     *  don't) assume the responses will indicate success.
-     */
     /*
      *  Paxos actually needs only a majority. Please see the notes for details.
      */
@@ -150,41 +143,40 @@ private PaxosResponse sendPrepare (int seqnum, int reqindex)
     int votenum = 0;
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
-        paxosres.resCode = res.resCode;
-        if (paxosres.resCode == 200) {
-            POJOPaxosBody result = POJOPaxosBody.fromJSON(res.resBody);
-            if (result.accValue != null) {
-                paxosres.accValue = result.accValue;
+        POJOResBody resbody = POJOResBody.fromJSON(res.resBody);
+        if (res.resCode == 200) {
+            if (resbody.info != null) {
                 //there's already an accepted value--just propagate that
-                return paxosres;
+                proposal.accValue = resbody.info;
+                return proposal;
             } else {
                 votenum += 1;
             }
-        } else if (paxosres.resCode == 409) {
+        } else if (res.resCode == 409) {
             //the response was old--get the more up-to-date history
-            POJOResBody resbody = POJOResBody.fromJSON(res.resBody);
-            paxosres.reqHistory = resbody.info;
-            paxosres.canProceed = false;
+            System.out.println("got committed request " + resbody.info);
+            proposal.accValue = resbody.info;
+            proposal.canProceed = false;
         } else {
-            /*
-             *  Acceptor only returns 200 or 409, so any other rescode means 
-             *  something bad happened. Just drop the response on the floor.
-             */
+            //something bad happened--drop the response on the floor
         }
     }
 
     if (votenum < (multi.length / 2 + 1)) {
         //too many servers are down--fail the proposal
-        paxosres.canProceed = false;
+        proposal.accValue = null;
+        proposal.canProceed = false;
+        throw new TimeoutException();
     }
-    return paxosres;
+    return proposal;
 }
 
-private PaxosResponse sendAccept (int seqnum, int reqindex, String request) 
+private PaxosProposal sendAccept (PaxosProposal proposal)
         throws TimeoutException
 {
-    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, request);
-    PaxosResponse paxosres = new PaxosResponse();
+    POJOPaxosBody prop = new POJOPaxosBody(proposal.seqNum, 
+                                           proposal.reqIndex, 
+                                           proposal.accValue);
 
     Client[] multi = Client.readyMulticast(this.getNodeView(), 
                                            "POST", "/paxos/acceptor/accept", 
@@ -194,11 +186,7 @@ private PaxosResponse sendAccept (int seqnum, int reqindex, String request)
     }
 
     /*
-     *  The Paxos algorithm only needs to wait for a majority of responses, 
-     *  but realistically because this program is implemented using Java (with 
-     *  exception handling for errors) on top of TCP (a reliable protocol), 
-     *  we're going to hear back from all of the nodes--although we can't (and 
-     *  don't) assume the responses will indicate success.
+     *  Paxos actually needs only a majority. Please see the notes for details.
      */
     while (!Client.done(multi)) {
         try {
@@ -208,35 +196,47 @@ private PaxosResponse sendAccept (int seqnum, int reqindex, String request)
         }
     }
 
+    /*
+     *  In Lamport's paxos, we would verify the response seqnum is 
+     *  equal to the one we sent, and if it's higher we fail out and 
+     *  set our seqnum to the higher value. However, we don't want to 
+     *  skip proposals because we rebuild history from old proposals, 
+     *  so we just fail out if the seqnum is not the same. 
+     */
     //process the responses
+    int votenum = 0;
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
-        paxosres.resCode = res.resCode;
-        if (paxosres.resCode == 200) {
-            POJOPaxosBody result = POJOPaxosBody.fromJSON(res.resBody);
-            if (result.seqNum > paxosres.seqNum) {
-                //accept the newer proposal
-                paxosres.seqNum = result.seqNum;
-            }
-        } else if (paxosres.resCode == 409) {
+        if (res.resCode == 409) {
             //the response was old--get the more up-to-date history
             POJOResBody resbody = POJOResBody.fromJSON(res.resBody);
-            paxosres.reqHistory = resbody.info;
-            paxosres.canProceed = false;
+            proposal.accValue = resbody.info;
+            proposal.canProceed = false;
+            break;
+        } else if (res.resCode == 200) {
+             //200 rescode means accept was successful
+             votenum += 1;
         } else {
-            /*
-             *  Acceptor only returns 200 or 409, so any other rescode means 
-             *  something bad happened. Just drop the response on the floor.
-             */
+            //something bad happened--drop the response on the floor
         }
     }
 
-    return paxosres;
+    if (votenum < (multi.length / 2 + 1)) {
+        //too many servers are down--fail the proposal
+        proposal.accValue = null;
+        proposal.canProceed = false;
+        throw new TimeoutException();
+    }
+
+    return proposal;
 }
 
-private boolean sendCommit (int seqnum, int reqindex, String value)
+private boolean sendCommit (PaxosProposal proposal)
 {
-    POJOPaxosBody prop = new POJOPaxosBody(reqindex, seqnum, value);
+    POJOPaxosBody prop = new POJOPaxosBody(proposal.seqNum, 
+                                           proposal.reqIndex, 
+                                           proposal.accValue);
+
     Client[] multi = Client.readyMulticast(this.getNodeView(), 
                                            "POST", "/paxos/acceptor/commit", 
                                            prop.toJSON());
@@ -253,17 +253,19 @@ private boolean sendCommit (int seqnum, int reqindex, String value)
     }
 
     //process the responses
+    boolean success = true;
     for (Client cl : multi) {
         POJOResHttp res = cl.getResponse();
-        if ((res.resCode < 200) || (res.resCode >= 300)) {
-            //commit failed--resend
-            //TODO: resend until successful
-            System.out.println("got rescode " + res.resCode + " from " + cl.getDestIP());
+        if (res.resCode != 200) {
+            //commit failed due to network partition--resend until successful
+            //TODO: use reliable broadcast to ensure success
+            System.out.println("got rescode " + res.resCode + 
+                               " from " + cl.getDestIP());
             System.out.println("resbody: " + res.resBody);
-            return false;
+            success = false;
         }
     }
-    return true;
+    return success;
 }
 
 private boolean hasProposalQueue ()

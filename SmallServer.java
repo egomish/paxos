@@ -136,6 +136,11 @@ protected String nodeViewAsJSON ()
     return str;
 }
 
+protected int getNextHistoryIndex ()
+{
+    return reqIndex;
+}
+
 protected void addToHistoryAt (int reqindex, String request)
 {
     reqHistory.history.put(reqindex, request);
@@ -147,34 +152,35 @@ protected String getHistoryAt (int reqindex)
     return request;
 }
 
-protected void replayHistory (POJOHistory pojo)
+protected POJOResHttp playHistoryTo (int endindex)
 {
-    this.reqHistory = pojo;
-    //reset the key-value store so history can be replayed
-    ContextKVS.kvStore.clear();
-
-    printLog("replaying history...");
-    for (int i = 0; i < this.reqHistory.history.size(); i += 1) {
-        String req = this.reqHistory.history.get(i);
+    POJOResHttp response = null;
+    for (reqIndex = reqIndex; reqIndex <= endindex; reqIndex += 1) {
+        String req = this.reqHistory.history.get(reqIndex);
         if (req == null) {
-            //no request was specified for this index--wait to keep replaying
-            //XXX: when could this possibly happen?
-            System.err.println("no request for index " + i + ".");
-            break;
+            //XXX: when might this happen?
+            System.err.println("no request for index " + reqIndex + ".");
+            throw new IllegalStateException();
+            //OR...? get consensus about what the request was
         }
         POJOReqHttp request = POJOReqHttp.fromJSON(req);
         String ip = ipAndPort;
         String method = request.method;
         String service = request.service;
+        System.out.println("(" + reqIndex + ") " + method + " " + service);
         //this is a terrible hack to ensure we don't paxos replayed requests
-        service += "?consensus=true"; //XXXESG DEBUG
+        service += "?fromhistory=true"; //XXXESG DEBUG
         String body = request.body;
-        System.out.println("(" + i + ") [" + ip + "] " + method + " " + service);
         Client cl = new Client(ip, method, service, body);
         cl.doSync();
-        POJOResHttp response = cl.getResponse();
-        printLog("replayed " + request.method + " " + request.service);
+        response = cl.getResponse();
     }
+    return response;
+}
+
+protected void playHistory ()
+{
+    System.out.println("moved permanently!!");
 }
 
 protected String getHistoryAsJSON ()
@@ -234,6 +240,7 @@ private static void initServer ()
      *  For establishing a total order of requests.
      */
     reqHistory = new POJOHistory();
+    reqIndex = 0;
 }
 
 /*
@@ -279,7 +286,6 @@ main(String[] args) throws Exception
     server.createContext("/paxos/acceptor", new ContextPaxosAcceptor());
     server.createContext("/history", new ContextHistory());
     server.createContext("/view", new ContextView());
-    server.createContext("/join", new ContextJoin());
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -302,6 +308,7 @@ public static String primaryIPAddress;
 public static boolean isPrimary;
 
 public static POJOHistory reqHistory;
+public static int reqIndex;
 
 
 }

@@ -1,34 +1,31 @@
 //XXX: this class might be better off extending POJO
-public class PaxosResponse {
+public class PaxosProposal {
 
 
 public String toString ()
 {
     String str = "";
     str += "{";
-    str += "resCode: " + resCode + ", ";
     str += "seqNum: " + seqNum + ", ";
+    str += "reqIndex: " + reqIndex + ", ";
     str += "accValue: " + accValue + ", ";
-    str += "reqHistory: " + reqHistory + ", ";
     str += "canProceed: " + canProceed;
     str += "}";
     return str;
 }
 
-public PaxosResponse ()
+public PaxosProposal ()
 {
-    resCode = 0;
     seqNum = 0;
+    reqIndex = 0;
     accValue = null;
-    reqHistory = null;
     canProceed = true;
 }
 
 
-public int resCode;
 public int seqNum;
+public int reqIndex;
 public String accValue;
-public String reqHistory;
 public boolean canProceed;
 
 }

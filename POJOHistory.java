@@ -30,7 +30,12 @@ public static POJOHistory fromJSON (String json)
     return pojo;
 }
 
-public int nextIndex ()
+public int size ()
+{
+    return history.size();
+}
+
+public int getNextIndex ()
 {
     return history.size();
 }

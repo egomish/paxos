@@ -11,22 +11,37 @@ public class ContextView extends SmallServer implements HttpHandler
 public void handle (HttpExchange exch) throws IOException
 {
     String uri = exch.getRequestURI().toString();
-    String path = exch.getRequestURI().getPath();
     String query = exch.getRequestURI().getQuery();
     System.err.println(this.receiveLog(exch.getRequestMethod(), uri));
 
-    if ((query == null) || (!query.equals("consensus=true"))) {
-        POJOResHttp response = doProposal(exch);
-        if (response.resCode != 200) {
-            throw new UnsupportedOperationException();
+    POJOResHttp response;
+
+    if ((query == null) || (!query.contains("fromhistory=true"))) {
+        //get consensus to do the request
+        POJOResHttp paxosres = doProposal(exch);
+        if (paxosres.resCode == 200) {
+            int resultindex;
+            try {
+                String info = POJOResBody.fromJSON(paxosres.resBody).info;
+                resultindex = Integer.parseInt(info);
+            } catch (NumberFormatException e) {
+                //something really bad happened if info isn't reqindex
+                e.printStackTrace();
+                throw e;
+            }
+            //do requests up to and including this one
+            response = this.playHistoryTo(resultindex);
         } else {
-            //cluster has added node, now add node to node's cluster
-            this.addToView(ipAndPort); //XXXESG DEBUG
+            //something terrible has happened while getting consensus
+            throw new IllegalStateException();
         }
+
+        //return the result to the client
         sendResponse(exch, response);
         return;
     }
 
+    //query contains "fromhistory=true"--actually execute the request
     doView(exch);
 }
 
@@ -54,11 +69,11 @@ private void doView (HttpExchange exch)
             resbody.msg = newnode + " already in view";
             response = new POJOResHttp(404, resbody.toJSON());
         } else {
-                POJOResBody resbody = new POJOResBody(true, "node added");
-                resbody.debug = newnode;
-                resbody.result = "Success";
-                resbody.msg = "Successfully added " + newnode + " to view";
-                response = new POJOResHttp(200, resbody.toJSON());
+            POJOResBody resbody = new POJOResBody(true, "node added");
+            resbody.debug = newnode;
+            resbody.result = "Success";
+            resbody.msg = "Successfully added " + newnode + " to view";
+            response = new POJOResHttp(200, resbody.toJSON());
         }
     } else if (method.equals("DELETE")) {
         boolean success = this.removeFromView(newnode);
@@ -80,17 +95,6 @@ private void doView (HttpExchange exch)
         response = new POJOResHttp(405, resbody.toJSON());
     }
     sendResponse(exch, response);
-}
-
-private POJOResHttp sendJoinTo (String newnode)
-{
-    String view = this.getNodeViewAsString();
-    String history = "\"" + this.getHistoryAsJSON() + "\"";
-    POJOViewHistory reqbody = new POJOViewHistory(view, history);
-    Client cl = new Client(newnode, "PUT", "/join", reqbody.toJSON());
-    cl.doSync();
-    POJOResHttp response = cl.getResponse();
-    return response;
 }
 
 private String parseIpPort (String reqbody)

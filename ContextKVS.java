@@ -17,21 +17,34 @@ public void handle (HttpExchange exch) throws IOException
     String query = exch.getRequestURI().getQuery();
     System.err.println(this.receiveLog(exch.getRequestMethod(), uri));
 
-    if (!isPrimary) {
-        POJOResHttp response = forwardToPrimary(exch);
-        sendResponse(exch, response.resCode, response.resBody);
-        return;
-    }
+    POJOResHttp response;
 
-    if ((query == null) || (!query.equals("consensus=true"))) {
-        POJOResHttp response = doProposal(exch);
-        if (response.resCode != 200) {
-            throw new UnsupportedOperationException();
+    if ((query == null) || (!query.contains("fromhistory=true"))) {
+        //get consensus to do the request
+        POJOResHttp paxosres = doProposal(exch);
+        if (paxosres.resCode == 200) {
+            int resultindex;
+            try {
+                String info = POJOResBody.fromJSON(paxosres.resBody).info;
+                resultindex = Integer.parseInt(info);
+            } catch (NumberFormatException e) {
+                //something really bad has happened if info isn't reqindex
+                e.printStackTrace();
+                throw e;
+            }
+            //do requests up to and including this one
+            response = this.playHistoryTo(resultindex);
+        } else {
+            //something terrible happened while getting consensus
+            throw new IllegalStateException();
         }
-        sendResponse(exch, response.resCode, response.resBody);
+
+        //return the result to the client
+        sendResponse(exch, response);
         return;
     }
 
+    //query contains "fromhistory=true"--actually execute the request
     doKVS(exch);
 }
 
@@ -117,17 +130,15 @@ private void doKVS (HttpExchange exch)
 
     //response fields
     int rescode = 200;
-    String resmsg = "";
+    POJOResBody resbody;
 
     String subpath = uri.getPath().substring(16); //subtract "/keyValue-store/"
     if (subpath.startsWith("search/")) {
         String subsubpath = subpath.substring(7); //subtract "search/"
         if (!method.equals("GET")) {
             rescode = 405;
-            POJOResBody resbody = new POJOResBody(false, "method not allowed");
-            resmsg = resbody.toJSON();
+            resbody = new POJOResBody(false, "method not allowed");
         } else {
-            POJOResBody resbody;
             String value = kvStore.get(urlkey);
             if (value != null) {
                 rescode = 200;
@@ -141,7 +152,6 @@ private void doKVS (HttpExchange exch)
                 resbody.error = "Key does not exist";
                 resbody.isExist = "false";
             }
-            resmsg = resbody.toJSON();
         }
     } else {
         if (method.equals("GET")) {
@@ -149,69 +159,65 @@ private void doKVS (HttpExchange exch)
             if (value == null) {
                 rescode = 404;
                 String info = "key does not exist";
-                POJOResBody resbody = new POJOResBody(false, info);
+                resbody = new POJOResBody(false, info);
                 resbody.msg = "Error";
                 resbody.error = "Key does not exist";
-                resmsg = resbody.toJSON();
             } else {
-                POJOResBody resbody = new POJOResBody(true, value);
+                resbody = new POJOResBody(true, value);
                 resbody.msg = "Success";
                 resbody.value = value;
-                resmsg = resbody.toJSON();
             }
         } else if (method.equals("PUT") || (method.equals("POST"))) {
             String reqvalue = parseValueFromRequest(exch);
             if (!ContextKVS.keyIsValid(urlkey)) {
                 rescode = 422;
-                POJOResBody resbody = new POJOResBody(false, "key is invalid");
+                resbody = new POJOResBody(false, "key is invalid");
                 resbody.msg = "Error";
                 resbody.error = "Key not valid";
-                resmsg = resbody.toJSON();
             } else if (!ContextKVS.valueIsValid(reqvalue)) {
                 rescode = 422;
                 String info = "value is invalid";
-                POJOResBody resbody = new POJOResBody(false, info);
+                resbody = new POJOResBody(false, info);
                 resbody.msg = "Error";
                 resbody.error = "Value is missing";
-                resmsg = resbody.toJSON();
             } else if (kvStore.get(urlkey) == null) {
                 kvStore.put(urlkey, reqvalue);
                 rescode = 201;
-                POJOResBody resbody = new POJOResBody(true, "key added");
+                resbody = new POJOResBody(true, "key added");
                 resbody.debug = reqvalue;
                 resbody.replaced = 0;
                 resbody.msg = "Added successfully";
-                resmsg = resbody.toJSON();
             } else {
                 kvStore.put(urlkey, reqvalue);
                 rescode = 200;
-                POJOResBody resbody = new POJOResBody(true, "key updated");
+                resbody = new POJOResBody(true, "key updated");
                 resbody.msg = "Updated successfully";
                 resbody.replaced = 1;
-                resmsg = resbody.toJSON();
             }
         } else if (method.equals("DELETE")) {
             String value = kvStore.get(urlkey);
             if (value != null) {
                 kvStore.remove(urlkey);
                 rescode = 200;
-                POJOResBody resbody = new POJOResBody(true, "key deleted");
+                resbody = new POJOResBody(true, "key deleted");
                 resbody.msg = "Success";
-                resmsg = resbody.toJSON();
             } else {
                 rescode = 404;
                 String info = "key does not exist";
-                POJOResBody resbody = new POJOResBody(false, info);
+                resbody = new POJOResBody(false, info);
                 resbody.msg = "Error";
                 resbody.error = "Key does not exist";
-                resmsg = resbody.toJSON();
             }
         } else {
             rescode = 405;
             String info = method + " " + uri + " not allowed";
-            resmsg = new POJOResBody(false, info).toJSON();
+            resbody = new POJOResBody(false, info);
         }
     }
+    Client cl = new Client(ipAndPort, "GET", "/history", null);
+    cl.doSync();
+    resbody.payload = cl.getResponse().resBody;
+    String resmsg = resbody.toJSON();
     sendResponse(exch, rescode, resmsg);
 }
 

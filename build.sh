@@ -12,13 +12,11 @@ javac -cp gson-2.8.5.jar:. SmallServer.java \
                            \
                            ContextPaxosProposer.java ContextPaxosAcceptor.java \
                            POJOPaxosBody.java \
-                           PaxosResponse.java \
+                           PaxosProposal.java \
                            \
                            ContextHistory.java \
                            POJOHistory.java \
                            \
                            ContextView.java \
-                           ContextJoin.java \
-                           POJOViewHistory.java \
                            \
 

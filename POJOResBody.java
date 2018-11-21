@@ -45,6 +45,7 @@ public POJOResBody (boolean s, String i)
     error = null;
     isExist = null;
     result = null;
+    payload = null;
 }
 
 public boolean success;
@@ -60,5 +61,6 @@ public String isExist;
 
 //required to conform to HW3 spec
 public String result;
+public String payload;
 
 }

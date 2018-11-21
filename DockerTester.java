@@ -34,7 +34,7 @@ public static void test_put_key (String node, String key, String val)
 
 //propose messages concurrently
 public static void test_concurrent_put (String[] nodes, String[] keys, String[] vals) {
-    Client[] clients = new Client[keys.length];
+    Client[] clients = new Client[nodes.length];
     for (int i = 0; i < clients.length; i += 1) {
         Client cl = new Client(nodes[i], "POST", "/keyValue-store/" + keys[i], "{val: '" + vals[i] + "'}");
         clients[i] = cl;
@@ -95,10 +95,12 @@ public static void
 main (String[] args)
 {
     String[] testnodes = {view[0], view[2]};
+    String[] keys = {"key1", "key2", "key3", "key4", "key5", "key6"};
+    String[] vals = {"val1", "val2", "val3", "val4", "val5", "val6"};
 
 //    test_hello();
 //    test_put_key(view[0], "foo", "bar");
-//    test_concurrent_put(nodes, {"key1", "key2"}, {"val1", "val2"});
+//    test_concurrent_put(testnodes, keys, vals);
 /*
     test_concurrent_put(testnodes, {"key1.1st", "key2.1st"}, 
                                    {"Quetzacotl", "Shiva"});
@@ -110,8 +112,10 @@ main (String[] args)
 //    test_get_view();
 //    test_add_view("10.0.0.9:4009");
 //    test_delete_view(view[1]);
-
-    test_put_add_put();
+//    test_put_add_put();
+    for (int i = 0; i < keys.length; i += 1) {
+        test_put_key(view[0], keys[i], vals[i]);
+    }
 
 }
 

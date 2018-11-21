@@ -13,6 +13,7 @@ public void handle (HttpExchange exch) throws IOException
     String path = exch.getRequestURI().getPath();
     System.err.println(this.receiveLog(exch.getRequestMethod(), path));
 
+try {
     if (path.startsWith("/paxos/acceptor/prepare")) {
         doPaxosAcceptorPrepare(exch);
     } else if (path.startsWith("/paxos/acceptor/accept")) {
@@ -23,6 +24,10 @@ public void handle (HttpExchange exch) throws IOException
         sendResponse(exch, 404, POJOResBody.clientError().toJSON());
         return;
     }
+} catch (Exception e) {
+    e.printStackTrace();
+    System.exit(8);
+}
 }
 
 private void doPaxosAcceptorPrepare (HttpExchange exch)
@@ -36,20 +41,26 @@ private void doPaxosAcceptorPrepare (HttpExchange exch)
         //promise to agree and send currently accepted value
         this.seqNum = recv.seqNum;
         printLog(recv.seqNum + " -> ACK(prepare)");
-        //XXX: only seqnum is required
-        POJOPaxosBody resbody = new POJOPaxosBody(recv.reqIndex, this.seqNum, this.accValue);
+        String info = this.accValue;
+        POJOResBody resbody = new POJOResBody(true, info);
         response = new POJOResHttp(200, resbody.toJSON());
     } else {
         //the recv proposal is old--refuse it
-        //but also send request history so the tardy node can catch up
+        //but also send the request for that index so the tardy node catches up
         printLog(recv.seqNum + " -> NAK(" + this.seqNum + ").");
-        String info = this.getHistoryAsJSON();
+        String info = this.getHistoryAt(recv.reqIndex);
         POJOResBody resbody = new POJOResBody(false, info);
         response = new POJOResHttp(409, resbody.toJSON());
     }
     sendResponse(exch, response);
 }
 
+/*
+ *  We deviate from Paxos here in that, if the proposal is old, we return 
+ *  the committed request at the proposed index instead of the latest 
+ *  proposal number. This is to help the tardy node catch up its history 
+ *  before it commits any more requests.
+ */
 private void doPaxosAcceptorAccept (HttpExchange exch)
 {
     String reqbody = Client.fromInputStream(exch.getRequestBody());
@@ -62,13 +73,16 @@ private void doPaxosAcceptorAccept (HttpExchange exch)
         this.seqNum = recv.seqNum;
         this.accValue = recv.accValue;
         printLog(recv.seqNum + " -> ACK(accept)");
-        POJOPaxosBody resbody = new POJOPaxosBody(recv.reqIndex, this.seqNum, this.accValue);
+        String info = Integer.toString(recv.seqNum);
+        POJOResBody resbody = new POJOResBody(true, info);
         response = new POJOResHttp(200, resbody.toJSON());
     } else {
         //discard the offered proposal because it's outdated
-        //but return requestHistory so the tardy node can catch up
+        //but return history[reqindex] so the tardy node can catch up
         printLog(recv.seqNum + " -> NAK(" + this.toString() + ").");
-        response = new POJOResHttp(409, this.getHistoryAsJSON());
+        String info = this.getHistoryAt(recv.reqIndex);
+        POJOResBody resbody = new POJOResBody(false, info);
+        response = new POJOResHttp(409, resbody.toJSON());
     }
     sendResponse(exch, response);
 }
@@ -84,24 +98,18 @@ private void doPaxosAcceptorCommit (HttpExchange exch)
     POJOReqHttp request = POJOReqHttp.fromJSON(recv.accValue);
     request.ip = this.ipAndPort;
 
-    //if the request interacts with the KVS, at it to the history
-    if (request.service.startsWith("/keyValue-store")) {
-        this.addToHistoryAt(recv.reqIndex, recv.accValue);
-    }
-
-    //this is a terrible hack to ensure that we don't paxos indefinitely
-    request.service += "?consensus=true"; //XXXESG DEBUG
+    //add the request to the history
+    this.addToHistoryAt(recv.reqIndex, recv.accValue);
 
     //reset the proposal value so that new proposals can get accepted
     this.accValue = null;
 
-    //execute the API call
-    Client cl = new Client(request);
-    cl.doSync();
+    printLog(recv.seqNum + " -> ACK(committed history[" + recv.reqIndex + "])");
+    POJOResBody resbody = new POJOResBody(true, Integer.toString(recv.reqIndex));
+    //TODO: propagate commit (reliable broadcast)
+    printLog("Reliable broadcast for commit not implemented.");
 
-    POJOResHttp response = cl.getResponse();
-    printLog(recv.seqNum + " -> ACK(committed " + request.method + ")");
-    sendResponse(exch, response);
+    sendResponse(exch, new POJOResHttp(200, resbody.toJSON()));
 }
 
 public String toString ()

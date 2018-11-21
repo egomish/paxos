@@ -23,15 +23,15 @@ public POJOPaxosBody ()
     this(null, null, null);
 }
 
-public POJOPaxosBody (Integer r, Integer s, String a)
+public POJOPaxosBody (Integer s, Integer r, String a)
 {
-    reqIndex = r;
     seqNum = s;
+    reqIndex = r;
     accValue = a;
 }
 
-public Integer reqIndex;
 public Integer seqNum;
+public Integer reqIndex;
 public String accValue;
 
 }
