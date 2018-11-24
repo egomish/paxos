@@ -69,11 +69,21 @@ private void doView (HttpExchange exch)
             resbody.msg = newnode + " already in view";
             response = new POJOResHttp(404, resbody.toJSON());
         } else {
-            POJOResBody resbody = new POJOResBody(true, "node added");
-            resbody.debug = newnode;
-            resbody.result = "Success";
-            resbody.msg = "Successfully added " + newnode + " to view";
-            response = new POJOResHttp(200, resbody.toJSON());
+            String reqbody = this.reqHistory.toJSON();
+            Client cl = new Client(newnode, "POST", "/history", reqbody);
+            cl.doSync();
+            if (cl.getResponse().resCode == 200) {
+                POJOResBody resbody = new POJOResBody(true, "node added");
+                resbody.debug = newnode;
+                resbody.result = "Success";
+                resbody.msg = "Successfully added " + newnode + " to view";
+                response = new POJOResHttp(200, resbody.toJSON());
+            } else {
+                String info = "node added but not caught up";
+                POJOResBody resbody = new POJOResBody(false, info);
+                resbody.debug = newnode;
+                response = new POJOResHttp(512, resbody.toJSON());
+            }
         }
     } else if (method.equals("DELETE")) {
         boolean success = this.removeFromView(newnode);

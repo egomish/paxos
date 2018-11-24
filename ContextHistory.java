@@ -22,16 +22,24 @@ private void doHistory (HttpExchange exch)
     URI uri = exch.getRequestURI();
     String path = uri.getPath();
 
+    POJOResHttp response;
     int rescode;
     String resmsg = "";
     if (method.equals("GET")) {
-        rescode = 200;
-        resmsg = this.reqHistory.toJSON();
+        POJOHistory history = this.reqHistory;
+        response = new POJOResHttp(200, history.toJSON());
+    } else if ((method.equals("PUT")) || (method.equals("POST"))) {
+        String reqbody = Client.fromInputStream(exch.getRequestBody());
+        POJOHistory history = POJOHistory.fromJSON(reqbody);
+        this.replayHistory(history);
+        POJOResBody resbody = new POJOResBody(true, "replayed history");
+        response = new POJOResHttp(200, resbody.toJSON());
     } else {
-        rescode = 405;
-        resmsg = method + " " + path + " not allowed";
+        String info = method + " " + path + " not allowed";
+        POJOResBody resbody = new POJOResBody(false, info);
+        response = new POJOResHttp(405, resbody.toJSON());
     }
-    sendResponse(exch, rescode, resmsg);
+    sendResponse(exch, response);
 }
 
 

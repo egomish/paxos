@@ -33,7 +33,6 @@ public void handle (HttpExchange exch) throws IOException
         }
         try {
             //do some paxos!
-try {
             proposal = doPaxosProposal(this.popProposal());
             if (!proposal.canProceed) {
                 //the proposal was refused because it was too old
@@ -52,10 +51,6 @@ try {
             System.err.println("WARNING: commit incomplete");
             e.printStackTrace();
         }
-} catch (Exception e) {
-    e.printStackTrace();
-    System.exit(8);
-}
     }
     //XXX: what if proposal is null?
     String info = Integer.toString(proposal.reqIndex);
@@ -157,6 +152,7 @@ private PaxosProposal sendPrepare (PaxosProposal proposal)
             System.out.println("got committed request " + resbody.info);
             proposal.accValue = resbody.info;
             proposal.canProceed = false;
+            return proposal; //HERE
         } else {
             //something bad happened--drop the response on the floor
         }

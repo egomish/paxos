@@ -74,7 +74,7 @@ protected void sendResponse (HttpExchange exch, int rescode, String resmsg)
  */
 protected void sendResponse (HttpExchange exch, POJOResHttp res)
 {
-//    System.err.println(this.respondLog(res));
+    System.err.println(this.respondLog(res));
     try {
         exch.getResponseHeaders().set("Content-Type", "application/json");
         exch.sendResponseHeaders(res.resCode, 0);
@@ -91,26 +91,6 @@ protected void sendResponse (HttpExchange exch, POJOResHttp res)
 protected String[] getNodeView ()
 {
     return nodeView.toArray(new String[0]);
-}
-
-protected String getNodeViewAsString ()
-{
-    String view = "";
-    for (String node : this.getNodeView()) {
-        view += node + ",";
-    }
-    view = view.substring(0, view.length() - 1);
-    return view;
-}
-
-protected String nodeViewAsString ()
-{
-    String str = "";
-    for (String node : this.getNodeView()) {
-        str += node + ",";
-    }
-    str = str.substring(0, str.length() - 1);
-    return str;
 }
 
 protected boolean addToView (String ipport)
@@ -152,6 +132,13 @@ protected String getHistoryAt (int reqindex)
     return request;
 }
 
+protected void replayHistory (POJOHistory history)
+{
+    reqHistory = history;
+    reqIndex = 0;
+    playHistoryTo(history.size() - 1);
+}
+
 protected POJOResHttp playHistoryTo (int endindex)
 {
     POJOResHttp response = null;
@@ -176,17 +163,6 @@ protected POJOResHttp playHistoryTo (int endindex)
         response = cl.getResponse();
     }
     return response;
-}
-
-protected void playHistory ()
-{
-    System.out.println("moved permanently!!");
-}
-
-protected String getHistoryAsJSON ()
-{
-    String json = reqHistory.toJSON();
-    return json;
 }
 
 private static void initServer ()
