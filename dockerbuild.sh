@@ -1,1 +1,1 @@
-docker build -t assignment2 .
+docker build -t paxos4 .

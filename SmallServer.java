@@ -9,7 +9,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.util.HashSet;
 import java.util.HashMap;
-import java.util.ArrayList;
 
 
 public class SmallServer {
@@ -17,14 +16,17 @@ public class SmallServer {
 
 protected void logReceive (String method, String path)
 {
-    System.err.println("[" + this.getClass().getName() + "] " + 
-                       "Received " + method + " " + path + ".");
+    this.log("Received " + method + " " + path + ".");
 }
 
 protected void logRespond (HttpRes response)
 {
-    System.err.println("[" + this.getClass().getName() + "] " + 
-                       "Responding with " + response.resCode + ".");
+    this.log("Responding with " + response.resCode + ".");
+}
+
+protected void log (String str)
+{
+    System.err.println("[" + this.getClass().getName() + "] " + str);
 }
 
 protected void sendResponse (HttpExchange exch, HttpRes res)
@@ -45,9 +47,65 @@ protected void sendResponse (HttpExchange exch, HttpRes res)
     }
 }
 
+protected String[] getNodeView ()
+{
+    return nodeView.toArray(new String[0]);
+}
+
+protected boolean addToView (String ipport)
+{
+    return nodeView.add(ipport);
+}
+
+protected int getQuorumSize ()
+{
+    return (nodeView.size() / 2 + 1);
+}
+
 protected POJOReq[] getHistory ()
 {
-    return reqHistory.toArray(new POJOReq[0]);
+    //----| begin transaction |----
+    POJOReq[] arr = new POJOReq[reqHistory.size()];
+    for (int i = 0; i < reqHistory.size(); i += 1) {
+        POJOReq req = reqHistory.get(i);
+        arr[i] = req;
+    }
+    //----|  end transaction  |----
+    return arr;
+}
+
+protected int getNextHistoryIndex()
+{
+    return reqHistory.size();
+}
+
+/*
+ *  Returns true if the history did not already contain an entry at <reqindex>.
+ */
+protected boolean addToHistoryAt (int reqindex, POJOReq request)
+{
+    POJOReq preventry = reqHistory.put(reqindex, request);
+    if (preventry == null) {
+        return true;
+    }
+    return false;
+}
+
+protected HttpRes playHistoryTo (int endindex)
+{
+    HttpRes response = null;
+    for (reqIndex = reqIndex; reqIndex <= endindex; reqIndex += 1) {
+        POJOReq fromhistory = reqHistory.get(reqIndex);
+        String destip = this.ipAndPort;
+        String method = fromhistory.reqMethod;
+        String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG a hack
+        String body = fromhistory.reqBody;
+        POJOReq request = new POJOReq(destip, method, url, body);
+        Client cl = new Client(request);
+        cl.doSync();
+        response = cl.getResponse();
+    }
+    return response;
 }
 
 public static void init_server ()
@@ -81,6 +139,7 @@ public static void init_server ()
     //XXX: won't work if the last char of the port is the same for any nodes
     String pid = String.valueOf(ipAndPort.charAt(ipAndPort.length() - 1));
     try {
+        processID = Integer.valueOf(pid);
     } catch (NumberFormatException e) {
         //something really bad has happened if pid isn't a number
         e.printStackTrace();
@@ -104,7 +163,7 @@ public static void init_server ()
     /*
      *  Initialize the total order of requests.
      */
-    reqHistory = new ArrayList<POJOReq>();
+    reqHistory = new HashMap<Integer, POJOReq>();
     reqIndex = 0;
 }
 
@@ -134,6 +193,9 @@ main(String[] args) throws Exception
     server.createContext("/test", new ContextTest());
     server.createContext("/keyValue-store", new ContextKVS());
     server.createContext("/keyValue-store/search", new ContextKVSSearch());
+    server.createContext("/paxos", new ContextPaxos());
+    server.createContext("/view", new ContextView());
+    server.createContext("/history", new ContextHistory());
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -146,14 +208,14 @@ main(String[] args) throws Exception
     server.start();
 }
 
+
 public static String ipAndPort;
 public static String serverIP;
 public static int serverPort;
 public static int processID;
-
 public static HashSet<String> nodeView;
 
-public static ArrayList<POJOReq> reqHistory;
+public static HashMap<Integer, POJOReq> reqHistory;
 public static int reqIndex;
 
 }

@@ -106,6 +106,8 @@ private void sendAsync ()
 
 private void recvAsync ()
 {
+    httpRes = new HttpRes();
+
     //get response
     try {
         httpRes.resCode = httpConn.getResponseCode();
@@ -135,6 +137,11 @@ private void recvAsync ()
         httpRes = HttpRes.serverError();
         return;
     }
+}
+
+public HttpRes getResponse ()
+{
+    return httpRes;
 }
 
 public Client (POJOReq req)

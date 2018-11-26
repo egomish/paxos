@@ -10,10 +10,45 @@ public class ContextKVS extends SmallServer implements HttpHandler {
 public void handle (HttpExchange exch)
 {
     this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
-    doKVS(exch);
+
+    String query = exch.getRequestURI().getQuery();
+
+    HttpRes response;
+
+    if ((query != null) && (query.contains("fromhistory=true"))) {
+        //the request is from the server's history--execute it
+        response = doKVS(exch);
+    } else {
+        //do consensus to add this request to the server's history
+        String ip = this.ipAndPort;
+        String method = exch.getRequestMethod();
+        String url = exch.getRequestURI().toString();
+        String reqbody = Client.fromInputStream(exch.getRequestBody());
+        POJOReq prop = new POJOReq(ip, method, url, reqbody);
+        Client cl = new Client(new POJOReq(ip, "POST", "/paxos/propose", prop.toJSON()));
+        cl.doSync();
+        HttpRes res = cl.getResponse();
+        if (res.resCode == 200) {
+            try {
+                int reqindex = Integer.valueOf(res.resBody);
+                response = this.playHistoryTo(reqindex);
+            } catch (NumberFormatException e) {
+                //something has gone horribly wrong if resbody isn't reqindex
+                e.printStackTrace();
+                response = HttpRes.serverError();
+            }
+        } else if (res.resCode == 513) {
+            //there was consensus but not all nodes could be reached
+            response = res;
+        } else {
+            response = HttpRes.serverError();
+        }
+    }
+
+    sendResponse(exch, response);
 }
 
-public void doKVS (HttpExchange exch)
+public HttpRes doKVS (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
     String path = exch.getRequestURI().getPath();
@@ -45,10 +80,12 @@ public void doKVS (HttpExchange exch)
             resbody.result = "Error";
             resbody.msg = "Value not valid";
         } else if (kvStore.get(urlkey) == null) {
+            kvStore.put(urlkey, reqvalue);
             rescode = 200;
             resbody.replaced = false;
             resbody.msg = "Added successfully";
         } else {
+            kvStore.put(urlkey, reqvalue);
             rescode = 201;
             resbody.replaced = true;
             resbody.msg = "Updated successfully";
@@ -74,7 +111,7 @@ public void doKVS (HttpExchange exch)
 
     resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
-    sendResponse(exch, response);
+    return response;
 }
 
 //XXX: if key contains '/' characters, key will be parsed incorrectly
