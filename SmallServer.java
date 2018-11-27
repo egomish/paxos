@@ -38,7 +38,9 @@ protected void sendResponse (HttpExchange exch, HttpRes res)
         }
         exch.sendResponseHeaders(res.resCode, 0);
         OutputStream out = exch.getResponseBody();
-        out.write(res.resBody.getBytes());
+        if (res.resBody != null) {
+            out.write(res.resBody.getBytes());
+        }
         out.close();
     } catch (Exception e) {
         //some kind of catastrophic error occurred
@@ -62,6 +64,45 @@ protected int getQuorumSize ()
     return (nodeView.size() / 2 + 1);
 }
 
+/*
+ *  Adds the request to the history and returns the index it was added at.
+ */
+protected int getConsensus (HttpExchange exch)
+{
+    int reqindex = -1;
+
+    String ip = this.ipAndPort;
+    String method = exch.getRequestMethod();
+    String url = exch.getRequestURI().toString();
+    String reqbody = Client.fromInputStream(exch.getRequestBody());
+    POJOReq prop = new POJOReq(ip, method, url, reqbody);
+    String body = prop.toJSON();
+
+    Client cl = new Client(new POJOReq(ip, "POST", "/paxos/propose", body));
+    cl.doSync();
+    HttpRes res = cl.getResponse();
+    if (res.resCode == 200) {
+        try {
+            reqindex = Integer.valueOf(res.resBody);
+        } catch (NumberFormatException e) {
+            //something has gone horribly wrong if resbody isn't reqindex
+            e.printStackTrace();
+        }
+    } else if (res.resCode == 202) {
+        //the request was committed but there is a network partition
+        try {
+            reqindex = Integer.valueOf(res.resBody);
+        } catch (NumberFormatException e) {
+            //something has gone horribly wrong if resbody isn't reqindex
+            e.printStackTrace();
+        }
+    } else {
+        //catastrophic failure occurred while getting consensus
+        System.err.println("bad consensus: " + res.resCode + " " + res.resBody);
+    }
+    return reqindex;
+}
+
 protected POJOReq[] getHistory ()
 {
     //----| begin transaction |----
@@ -72,6 +113,11 @@ protected POJOReq[] getHistory ()
     }
     //----|  end transaction  |----
     return arr;
+}
+
+protected POJOReq getHistoryAt (Integer index)
+{
+    return reqHistory.get(index);
 }
 
 protected int getNextHistoryIndex()

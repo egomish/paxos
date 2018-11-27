@@ -8,8 +8,18 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
 
-public class Client {
+public class Client implements Runnable {
 
+
+/* 
+ *  From Runnable interface.
+ */
+public void run ()
+{
+    sendAsync();
+    recvAsync();
+    messageComplete = true;
+}
 
 public static String fromInputStream (InputStream in)
 {
@@ -31,6 +41,25 @@ public static String fromInputStream (InputStream in)
     }
 
     return str;
+}
+
+public void fireAsync ()
+{
+    messageComplete = false;
+    messageThread = new Thread(this);
+    messageThread.start();
+}
+
+public boolean done ()
+{
+    if (messageComplete) {
+        try {
+            messageThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+    return messageComplete;
 }
 
 public void doSync ()
@@ -119,7 +148,7 @@ private void recvAsync ()
 
     InputStream in = null;
     try {
-        if ((200 <= httpRes.resCode) || (httpRes.resCode < 300)) {
+        if ((200 <= httpRes.resCode) && (httpRes.resCode < 300)) {
             in = httpConn.getInputStream();
         } else {
             in = httpConn.getErrorStream();
@@ -150,6 +179,8 @@ public Client (POJOReq req)
     destURL = null;
     httpConn = null;
     httpRes = null;
+
+    messageComplete = true;
 }
 
 
@@ -157,5 +188,8 @@ private POJOReq clientReq;
 private URL destURL;
 private HttpURLConnection httpConn;
 private HttpRes httpRes;
+
+private Thread messageThread;
+private boolean messageComplete;
 
 }

@@ -19,29 +19,12 @@ public void handle (HttpExchange exch)
         //the request is from the server's history--execute it
         response = doView(exch);
     } else {
-        //do consensus to add this request to the server's history
-        String ip = this.ipAndPort;
-        String method = exch.getRequestMethod();
-        String url = exch.getRequestURI().toString();
-        String reqbody = Client.fromInputStream(exch.getRequestBody());
-        POJOReq prop = new POJOReq(ip, method, url, reqbody);
-        Client cl = new Client(new POJOReq(ip, "POST", "/paxos/propose", prop.toJSON()));
-        cl.doSync();
-        HttpRes res = cl.getResponse();
-        if (res.resCode == 200) {
-            try {
-                int reqindex = Integer.valueOf(res.resBody);
-                response = this.playHistoryTo(reqindex);
-            } catch (NumberFormatException e) {
-                //something has gone horribly wrong if resbody isn't reqindex
-                e.printStackTrace();
-                response = HttpRes.serverError();
-            }
-        } else if (res.resCode == 513) {
-            //there was consensus but not all nodes could be reached
-            response = res;
-        } else {
+        //add the request to the server's history, then execute the request
+        int reqindex = this.getConsensus(exch);
+        if (reqindex == -1) {
             response = HttpRes.serverError();
+        } else {
+            response = this.playHistoryTo(reqindex);
         }
     }
 

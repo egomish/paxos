@@ -37,13 +37,14 @@ private HttpRes doPaxosPropose (HttpExchange exch)
     String reqstr = Client.fromInputStream(exch.getRequestBody());
     POJOReq request = POJOReq.fromJSON(reqstr);
 
+    int seqnum = this.nextProposalNumber();
+    int reqindex = this.getNextHistoryIndex();
     HttpRes paxosres = null;
 
     //do some paxos!
     while (request != null) {
-        int seqnum = this.nextProposalNumber();
-        int reqindex = this.getNextHistoryIndex();
         POJOPaxos prop = new POJOPaxos(seqnum, reqindex, null);
+        System.out.println("new proposal: " + prop.toJSON());
 
         //prepare
         int didprepare = 0;
@@ -51,28 +52,42 @@ private HttpRes doPaxosPropose (HttpExchange exch)
         for (String node : this.getNodeView()) {
             POJOReq req = new POJOReq(node, "POST", "/paxos/prepare", prop.toJSON());
             Client cl = new Client(req);
+            this.log("sending prepare to " + node + "...");
             cl.doSync();
             HttpRes res = cl.getResponse();
             if (res.resCode == 200) {
                 //this proposal is recent enough
                 didprepare += 1;
                 POJOPaxos prepres = POJOPaxos.fromJSON(res.resBody);
+                //TODO: check acceptor seqnum and choose latest accValue
                 if (prepres.accValue != null) {
                     value = prepres.accValue;
+                    System.out.println("already value: " + prepres.accValue.toJSON());
                 }
             } else if (res.resCode == 408) {
-                //this proposal is too old--catch up history and try again
-                System.out.println("catch up on prepare not implemented!!");
+                //this proposal is old--catch up new history if there is any
+                POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
+                if (histreq != null) {
+                    //there is new history--propagate historical req
+                    this.nextProposalNumber(histreq.seqNum);
+                    reqindex = histreq.reqIndex;
+                    value = histreq.accValue;
+                }
+                continue;
             } else {
                 //something went wrong--drop the response on the floor
                 System.out.println("something went wrong");
             }
         }
         if (didprepare < this.getQuorumSize()) {
+            //failed to reach majority on prepare--try again
+            this.nextProposalNumber();
             continue;
         }
+        this.log("Successfully completed prepare phase.");
 
         //accept
+        System.out.println("setting prop value to: " + value.toJSON());
         //----| begin transaction |----
         prop.accValue = value;
         if (value == null) {
@@ -83,28 +98,41 @@ private HttpRes doPaxosPropose (HttpExchange exch)
         for (String node : this.getNodeView()) {
             POJOReq req = new POJOReq(node, "POST", "/paxos/accept", prop.toJSON());
             Client cl = new Client(req);
+            this.log("sending accept to " + node + "...");
             cl.doSync();
             HttpRes res = cl.getResponse();
             if (res.resCode == 200) {
                 //this proposal was accepted
+                //Lamport's paxos would have us check seqnum, but 200 means OK
                 didaccept += 1;
             } else if (res.resCode == 408) {
-                //this proposal is too old--catch up history and try again
-                System.out.println("catch up on accept not implemented!!");
+                //this proposal is old--catch up new history if there is any
+                POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
+                if (histreq != null) {
+                    //there is new history--propagate historical request
+                    this.nextProposalNumber(histreq.seqNum);
+                    reqindex = histreq.reqIndex;
+                    value = histreq.accValue;
+                }
+                continue;
             } else {
                 //something went wrong--drop the response on the floor
                 System.out.println("something went wrong");
             }
         }
         if (didaccept < this.getQuorumSize()) {
+            //failed to reach majority on accept--try again
+            this.nextProposalNumber();
             continue;
         }
+        this.log("Successfully completed accept phase.");
 
         //commit
         boolean success = true;
         for (String node : this.getNodeView()) {
             POJOReq req = new POJOReq(node, "POST", "/paxos/commit", prop.toJSON());
             Client cl = new Client(req);
+            this.log("sending commit to " + node + "...");
             cl.doSync();
             HttpRes res = cl.getResponse();
             if (res.resCode != 200) {
@@ -135,16 +163,22 @@ private HttpRes doPaxosPrepare (HttpExchange exch)
 
     HttpRes response;
 
+    POJOReq hist = this.getHistoryAt(recv.reqIndex);
+    if (hist == null) {
+        hist = this.accValue;
+    }
     if (recv.seqNum > this.seqNum) {
-        //promise to agree and respond with accepted value
+        //promise to agree and respond with accepted value at reqindex
+        this.log(recv.seqNum + " -> ACK(prepare [" + recv.reqIndex + "]).");
         this.seqNum = recv.seqNum;
-        this.log(recv.seqNum + " -> ACK(prepare).");
-        response = new HttpRes(200, this.accValue.toJSON());
+        POJOPaxos resbody = new POJOPaxos(recv.seqNum, recv.reqIndex, hist);
+        response = new HttpRes(200, resbody.toJSON());
     } else {
-        //the proposal is old--refuse it
+        //the proposal is old--refuse it, but help the tardy node catch up
+        //XXX: we might be propagating too early here and hit duelling proposers
         this.log(recv.seqNum + " -> NAK(" + this.seqNum + ").");
-        response = new HttpRes(408, "history not implemented");
-        response.contentType = null;
+        POJOPaxos resbody = new POJOPaxos(this.seqNum, recv.reqIndex, hist);
+        response = new HttpRes(408, resbody.toJSON());
     }
 
     return response;
@@ -158,19 +192,27 @@ private HttpRes doPaxosAccept (HttpExchange exch)
     HttpRes response;
 
     if (recv.seqNum >= this.seqNum) {
-        //accept the proposal
+        //the proposal is recent--accept it
+        this.log(recv.seqNum + " -> ACK(accept [" + recv.reqIndex + "]).");
         //----| begin transaction |----
         this.seqNum = recv.seqNum;
         this.accValue = recv.accValue;
         //----|  end transaction  |----
-        response = new HttpRes(200, "accepted");
-        response.contentType = null;
+        //respond with this.seqNum, recv.reqIndex, and this.accValue
+        response = new HttpRes(200, recv.toJSON());
     } else {
-        //discard the proposal because it's outdated
-        //but return the latest seqnum so the tardy node can participate later
+        //the proposal is old--refuse it
+        //but send the already-committed request so the tardy node catches up
         this.log(recv.seqNum + " -> NAK(" + this.seqNum + ").");
-        response = new HttpRes(408, Integer.toString(this.seqNum));
-        response.contentType = null;
+        //respond with history[recv.reqIndex], or 
+        //             request currently being proposed for recv.reqIndex, or 
+        //             null if not request is currently being proposed
+        POJOReq hist = this.getHistoryAt(recv.reqIndex);
+        if (hist == null) {
+            hist = this.accValue;
+        }
+        POJOPaxos resbody = new POJOPaxos(this.seqNum, recv.reqIndex, hist);
+        response = new HttpRes(408, resbody.toJSON());
     }
 
     return response;
@@ -187,7 +229,9 @@ private HttpRes doPaxosCommit (HttpExchange exch)
     POJOReq request = recv.accValue;
 
     //add the request to history
+    System.out.println("history before: " + reqHistory.size());
     this.addToHistoryAt(recv.reqIndex, request);
+    System.out.println("history after: " + reqHistory.size());
 
     //propagate the commit (reliable broadcast)
     this.log("(reliable broadcast not implemented)");
@@ -205,6 +249,13 @@ private HttpRes doPaxosCommit (HttpExchange exch)
 //XXX: the magic number 100 is the max number of processes in the paxos cluster
 protected int nextProposalNumber ()
 {
+    return this.nextProposalNumber(this.monotonicNumber);
+}
+
+//XXX: the magic number 100 is the max number of processes in the paxos cluster
+protected int nextProposalNumber (int propnum)
+{
+    this.monotonicNumber = propnum / 100;
     this.monotonicNumber += 1;
     return (this.monotonicNumber * 100) + this.processID;
 }
