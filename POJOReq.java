@@ -24,6 +24,23 @@ public static POJOReq fromJSON (String json)
     return pojo;
 }
 
+public boolean isEmpty ()
+{
+    if (destIP != null) {
+        return false;
+    }
+    if (reqMethod != null) {
+        return false;
+    }
+    if (reqURL != null) {
+        return false;
+    }
+    if (reqBody != null) {
+        return false;
+    }
+    return true;
+}
+
 public POJOReq ()
 {
     this(null, null, null, null);

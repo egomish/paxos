@@ -33,127 +33,140 @@ public void handle (HttpExchange exch)
 
 private HttpRes doPaxosPropose (HttpExchange exch)
 {
-    //extract the KVS request from the HTTP request and add it to the queue
+    //extract the KVS request from the HTTP request
     String reqstr = Client.fromInputStream(exch.getRequestBody());
     POJOReq request = POJOReq.fromJSON(reqstr);
 
-    int seqnum = this.nextProposalNumber();
-    int reqindex = this.getNextHistoryIndex();
-    HttpRes paxosres = null;
+    HttpRes res = null;
+    int finali = -1;
+    while (finali == -1) {
+        System.out.println("haven't added proposal to history");
+        int seqnum = nextProposalNumber();
+        int reqindex = this.getNextHistoryIndex();
+        finali = doProposal(seqnum, reqindex, request);
+    }
+    System.out.println("successfully added proposal to history at " + finali);
+    HttpRes response = new HttpRes(200, Integer.toString(finali));
+    return response;
+}
 
-    //do some paxos!
-    while (request != null) {
-        POJOPaxos prop = new POJOPaxos(seqnum, reqindex, null);
-        System.out.println("new proposal: " + prop.toJSON());
+private int doProposal (int seqnum, int reqindex, POJOReq request)
+{
+    POJOPaxos prop = new POJOPaxos(seqnum, reqindex, null);
 
-        //prepare
-        int didprepare = 0;
-        POJOReq value = null;
-        for (String node : this.getNodeView()) {
-            POJOReq req = new POJOReq(node, "POST", "/paxos/prepare", prop.toJSON());
-            Client cl = new Client(req);
-            this.log("sending prepare to " + node + "...");
-            cl.doSync();
-            HttpRes res = cl.getResponse();
-            if (res.resCode == 200) {
-                //this proposal is recent enough
-                didprepare += 1;
-                POJOPaxos prepres = POJOPaxos.fromJSON(res.resBody);
-                //TODO: check acceptor seqnum and choose latest accValue
-                if (prepres.accValue != null) {
-                    value = prepres.accValue;
-                    System.out.println("already value: " + prepres.accValue.toJSON());
-                }
-            } else if (res.resCode == 408) {
-                //this proposal is old--catch up new history if there is any
-                POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
-                if (histreq != null) {
-                    //there is new history--propagate historical req
-                    this.nextProposalNumber(histreq.seqNum);
-                    reqindex = histreq.reqIndex;
-                    value = histreq.accValue;
-                }
-                continue;
-            } else {
-                //something went wrong--drop the response on the floor
-                System.out.println("something went wrong");
+    //prepare
+    POJOReq value = null;
+    int didprepare = 0;
+    for (String node : this.getNodeView()) {
+        POJOReq req = new POJOReq(node, "POST", "/paxos/prepare", prop.toJSON());
+        Client cl = new Client(req);
+        cl.doSync();
+        HttpRes res = cl.getResponse();
+        if (res.resCode == 200) {
+            //the proposal is recent
+            didprepare += 1;
+            //TODO: choose latest accValue, not last
+            POJOPaxos prepres = POJOPaxos.fromJSON(res.resBody);
+            if (!prepres.accValue.isEmpty()) {
+                value = prepres.accValue;
             }
-        }
-        if (didprepare < this.getQuorumSize()) {
-            //failed to reach majority on prepare--try again
-            this.nextProposalNumber();
-            continue;
-        }
-        this.log("Successfully completed prepare phase.");
-
-        //accept
-        System.out.println("setting prop value to: " + value.toJSON());
-        //----| begin transaction |----
-        prop.accValue = value;
-        if (value == null) {
-            prop.accValue = request;
-        }
-        //----|  end transaction  |----
-        int didaccept = 0;
-        for (String node : this.getNodeView()) {
-            POJOReq req = new POJOReq(node, "POST", "/paxos/accept", prop.toJSON());
-            Client cl = new Client(req);
-            this.log("sending accept to " + node + "...");
-            cl.doSync();
-            HttpRes res = cl.getResponse();
-            if (res.resCode == 200) {
-                //this proposal was accepted
-                //Lamport's paxos would have us check seqnum, but 200 means OK
-                didaccept += 1;
-            } else if (res.resCode == 408) {
-                //this proposal is old--catch up new history if there is any
-                POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
-                if (histreq != null) {
-                    //there is new history--propagate historical request
-                    this.nextProposalNumber(histreq.seqNum);
-                    reqindex = histreq.reqIndex;
-                    value = histreq.accValue;
-                }
-                continue;
-            } else {
-                //something went wrong--drop the response on the floor
-                System.out.println("something went wrong");
+        } else if (res.resCode == 408) {
+            //the acceptor thinks this proposal is old--drop response on floor
+/*
+            //this proposal is old--catch up if there's new history
+            POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
+            if (!histreq.accValue.isEmpty()) {
+                //there is new history--propagate that first
+                int s = nextProposalNumber(histreq.seqNum);
+                int i = reqindex;
+                POJOReq r = histreq.accValue;
+                //TODO: return request so that it eventually gets committed
+                int innerres = doProposal(s, i, r);
+                //XXX: what if innerres is -1?
+                return -1; //request isn't in history yet
             }
-        }
-        if (didaccept < this.getQuorumSize()) {
-            //failed to reach majority on accept--try again
-            this.nextProposalNumber();
-            continue;
-        }
-        this.log("Successfully completed accept phase.");
-
-        //commit
-        boolean success = true;
-        for (String node : this.getNodeView()) {
-            POJOReq req = new POJOReq(node, "POST", "/paxos/commit", prop.toJSON());
-            Client cl = new Client(req);
-            this.log("sending commit to " + node + "...");
-            cl.doSync();
-            HttpRes res = cl.getResponse();
-            if (res.resCode != 200) {
-                System.out.println("failed to commit on " + node);
-                success = false;
-            }
-        }
-        if (success) {
-            request = null;
-            paxosres = new HttpRes(200, Integer.toString(prop.reqIndex));
-            paxosres.contentType = null;
+*/
         } else {
-            request = null;
-            paxosres = new HttpRes(513, "commit failed");
-            paxosres.contentType = null;
+            //something went wrong--drop the response on the floor
         }
-        break;
+    }
+    if (didprepare < this.getQuorumSize()) {
+        //failed to reach majority on prepare--try again
+        int s = nextProposalNumber();
+        int i = reqindex;
+        POJOReq r = request;
+        return doProposal(s, i, r);
     }
 
-    //return the result of the consensus
-    return paxosres;
+    //accept
+    prop.accValue = value;
+    if (value == null) {
+        prop.accValue = request;
+    } else {
+        //the request isn't getting into history with this proposal
+        //finali = -1
+    }
+    int didaccept = 0;
+    for (String node : this.getNodeView()) {
+        POJOReq req = new POJOReq(node, "POST", "/paxos/accept", prop.toJSON());
+        Client cl = new Client(req);
+        cl.doSync();
+        HttpRes res = cl.getResponse();
+        if (res.resCode == 200) {
+            didaccept += 1;
+            //Lamport's paxos would have us verify the seqnum, but 200 means OK
+        } else if (res.resCode == 408) {
+            //this proposal is old--catch up if there's new history
+            POJOPaxos histreq = POJOPaxos.fromJSON(res.resBody);
+            if (!histreq.accValue.isEmpty()) {
+                //there is new history--propagate that first
+                int s = nextProposalNumber(histreq.seqNum);
+                int i = reqindex;
+                POJOReq r = histreq.accValue;
+                int innerres = doProposal(s, i, r);
+                //XXX: what if innerres is -1?
+                return -1; //request isn't in history yet
+            }
+        } else {
+            //something went wrong--drop the response on the floor
+        }
+    }
+    //XXX: not majority--all!!!
+    if (didaccept < this.getQuorumSize()) {
+        //failed to reach majority on prepare--try again
+        int s = nextProposalNumber();
+        int i = reqindex;
+        POJOReq r = request;
+        return doProposal(s, i, r);
+    }
+    /*
+     *  Consensus! Tell the cluster so they can get consensus on something else.
+     */
+
+    //commit
+    boolean success = true;
+    for (String node : this.getNodeView()) {
+        POJOReq req = new POJOReq(node, "POST", "/paxos/commit", prop.toJSON());
+        Client cl = new Client(req);
+        cl.doSync();
+        HttpRes res = cl.getResponse();
+        if (res.resCode != 200) {
+            success = false;
+        }
+    }
+
+    int rescode;
+    if (success) {
+        //all the nodes in this node's view committed the request
+        rescode = 200;
+    } else {
+        //there's a network partition, so some nodes didn't get the commit
+        rescode = 202;
+    }
+    POJOPaxos resbody = new POJOPaxos(seqnum, reqindex, null);
+    HttpRes response = new HttpRes(rescode, resbody.toJSON());
+    //XXX: we discard information about the network partition
+    return reqindex; //request is in history at reqindex
 }
 
 private HttpRes doPaxosPrepare (HttpExchange exch)
@@ -163,10 +176,14 @@ private HttpRes doPaxosPrepare (HttpExchange exch)
 
     HttpRes response;
 
+    //get the request from history if it's already there, or 
+    //                from accValue if a proposal is in-progress
+    //XXX: What if recv.reqIndex != this.reqIndex?
     POJOReq hist = this.getHistoryAt(recv.reqIndex);
     if (hist == null) {
         hist = this.accValue;
     }
+
     if (recv.seqNum > this.seqNum) {
         //promise to agree and respond with accepted value at reqindex
         this.log(recv.seqNum + " -> ACK(prepare [" + recv.reqIndex + "]).");
@@ -249,15 +266,15 @@ private HttpRes doPaxosCommit (HttpExchange exch)
 //XXX: the magic number 100 is the max number of processes in the paxos cluster
 protected int nextProposalNumber ()
 {
-    return this.nextProposalNumber(this.monotonicNumber);
+    this.monotonicNumber += 1;
+    return (this.monotonicNumber * 100) + this.processID;
 }
 
 //XXX: the magic number 100 is the max number of processes in the paxos cluster
 protected int nextProposalNumber (int propnum)
 {
     this.monotonicNumber = propnum / 100;
-    this.monotonicNumber += 1;
-    return (this.monotonicNumber * 100) + this.processID;
+    return nextProposalNumber();
 }
 
 protected ContextPaxos ()
