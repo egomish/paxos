@@ -44,31 +44,34 @@ public HttpRes doView (HttpExchange exch)
         rescode = 200;
         resbody = new POJOView(this.getNodeView());
     } else if ((method.equals("PUT")) || (method.equals("POST"))) {
-        //XXX: get node caught up, THEN add it to the cluster
         String body = Client.fromInputStream(exch.getRequestBody());
         String ipport = POJOIPPort.fromJSON(body).ip_port;
-        boolean newlyadded = this.addToView(ipport);
-        resbody = new POJOView(this.getNodeView());
-        if (newlyadded) {
-            //get the new node caught up
-            String history = new POJOHistory(this.getHistory()).toJSON();
-            POJOReq request = new POJOReq(ipport, "POST", "/history", history);
-            Client cl = new Client(request);
-            cl.doSync();
-            HttpRes res = cl.getResponse();
-            if (res.resCode == 200) {
+
+        //get the node caught up
+        String history = new POJOHistory(this.getHistory()).toJSON();
+        POJOReq request = new POJOReq(ipport, "POST", "/history", history);
+        Client cl = new Client(request);
+        cl.doSync();
+
+        HttpRes res = cl.getResponse();
+        resbody = new POJOView();
+        if (res.resCode == 200) {
+            //the node has the history--add it to the view
+            boolean added = this.addToView(ipport);
+            if (added) {
                 rescode = 200;
                 resbody.result = "Success";
                 resbody.msg = "Successfully added " + ipport + " to view";
             } else {
-                rescode = 513;
+                rescode = 404;
                 resbody.result = "Error";
-                resbody.msg = ipport + " added, but without history";
+                resbody.msg = ipport + " is already in view";
             }
         } else {
-            rescode = 404;
+            rescode = 503;
             resbody.result = "Error";
-            resbody.msg = ipport + " is already in view";
+            resbody.msg = "Could not get " + ipport + " caught up";
+            //if we wanted to STNITH tardy nodes, this might be the place
         }
 //    } else if (method.equals("DELETE")) {
     } else {

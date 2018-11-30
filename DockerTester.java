@@ -46,6 +46,30 @@ public static void test_get_key (String node, String key)
     System.out.println(node + ": " + cl.getResponse().resBody);
 }
 
+//propose two messages concurrently
+public static void test_concurrent_put_two ()
+{
+    POJOReq req1 = new POJOReq(leader_node, "PUT", 
+                                            "/keyValue-store/key1", 
+                                            "{val: 'val1'}");
+    POJOReq req2 = new POJOReq(challenger_node, "PUT", 
+                                                "/keyValue-store/key2", 
+                                                "{val: 'val2'}");
+    Client cl1 = new Client(req1);
+    Client cl2 = new Client(req2);
+    cl1.fireAsync();
+    cl2.fireAsync();
+    while ((!cl1.done()) || (!cl2.done())) {
+        try {
+            Thread.sleep(200); //sleep 200ms
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+    System.out.println(leader_node + ": " + cl1.getResponse().resBody);
+    System.out.println(challenger_node + ": " + cl2.getResponse().resBody);
+}
+
 //propose <nodenum> messages concurrently
 public static void test_concurrent_put (int nodenum)
 {
@@ -135,10 +159,10 @@ main (String[] args)
 //    test_get_key(leader_node, "foo");
 
     //add to view
-//    test_add_view(new_node);
+    test_add_view(new_node);
 
-    //make 2 concurrent requests
-    test_concurrent_put(2);
+    //make concurrent requests on leader_node and challenger_node
+//    test_concurrent_put_two();
 
     //TODO: sequence of concurrent requests
     //TODO: delete from view

@@ -54,6 +54,11 @@ protected String[] getNodeView ()
     return nodeView.toArray(new String[0]);
 }
 
+protected boolean nodeViewContains (String ipport)
+{
+    return nodeView.contains(ipport);
+}
+
 protected boolean addToView (String ipport)
 {
     return nodeView.add(ipport);
@@ -82,14 +87,6 @@ protected int getConsensus (HttpExchange exch)
     cl.doSync();
     HttpRes res = cl.getResponse();
     if (res.resCode == 200) {
-        try {
-            reqindex = Integer.valueOf(res.resBody);
-        } catch (NumberFormatException e) {
-            //something has gone horribly wrong if resbody isn't reqindex
-            e.printStackTrace();
-        }
-    } else if (res.resCode == 202) {
-        //the request was committed but there is a network partition
         try {
             reqindex = Integer.valueOf(res.resBody);
         } catch (NumberFormatException e) {
