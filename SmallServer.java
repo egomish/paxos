@@ -16,17 +16,18 @@ public class SmallServer {
 
 protected void logReceive (String method, String path)
 {
-    this.log("Received " + method + " " + path + ".");
+//    this.log("Received " + method + " " + path + ".");
 }
 
 protected void logRespond (HttpRes response)
 {
-    this.log("Responding with " + response.resCode + ".");
+//    this.log("Responding with " + response.resCode + ".");
 }
 
 protected void log (String str)
 {
-    System.err.println("[" + this.getClass().getName() + "] " + str);
+//    System.err.println("(" + Thread.currentThread().getName() + ") " + str);
+    System.err.println("(" + Thread.currentThread().getName() + ") [" + this.getClass().getName() + "] " + str);
 }
 
 protected void sendResponse (HttpExchange exch, HttpRes res)
@@ -76,6 +77,7 @@ protected int getConsensus (HttpExchange exch)
 {
     int reqindex = -1;
 
+    //create request to get consensus on
     String ip = this.ipAndPort;
     String method = exch.getRequestMethod();
     String url = exch.getRequestURI().toString();
@@ -83,6 +85,7 @@ protected int getConsensus (HttpExchange exch)
     POJOReq prop = new POJOReq(ip, method, url, reqbody);
     String body = prop.toJSON();
 
+    //send the request for consensus
     Client cl = new Client(new POJOReq(ip, "POST", "/paxos/propose", body));
     cl.doSync();
     HttpRes res = cl.getResponse();
@@ -119,7 +122,7 @@ protected POJOReq getHistoryAt (Integer index)
 
 protected int getNextHistoryIndex()
 {
-    return reqHistory.size();
+    return commitIndex + 1;
 }
 
 /*
@@ -134,11 +137,25 @@ protected boolean addToHistoryAt (int reqindex, POJOReq request)
     return false;
 }
 
+protected void exposeHistoryAt (int reqindex)
+{
+    //XXX: what if reqindex > commitIndex + 1?
+    if (reqindex == commitIndex + 1) {
+        commitIndex = reqindex;
+    } else if (reqindex < commitIndex + 1) {
+       //do nothing--history[reqindex] has already been exposed
+    }
+}
+
 protected HttpRes playHistoryTo (int endindex)
 {
     HttpRes response = null;
-    for (reqIndex = reqIndex; reqIndex <= endindex; reqIndex += 1) {
-        POJOReq fromhistory = reqHistory.get(reqIndex);
+    for (runIndex = runIndex; runIndex <= endindex; runIndex += 1) {
+        if (runIndex > commitIndex) {
+            //TODO: figure out if this is possible
+            break;
+        }
+        POJOReq fromhistory = reqHistory.get(runIndex);
         String destip = this.ipAndPort;
         String method = fromhistory.reqMethod;
         String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG a hack
@@ -207,7 +224,8 @@ public static void init_server ()
      *  Initialize the total order of requests.
      */
     reqHistory = new HashMap<Integer, POJOReq>();
-    reqIndex = 0;
+    commitIndex = -1;
+    runIndex = 0;
 }
 
 /* 
@@ -259,6 +277,7 @@ public static int processID;
 public static HashSet<String> nodeView;
 
 public static HashMap<Integer, POJOReq> reqHistory;
-public static int reqIndex;
+public static int runIndex;
+public static int commitIndex;
 
 }

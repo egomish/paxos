@@ -41,6 +41,17 @@ public boolean isEmpty ()
     return true;
 }
 
+public String toString ()
+{
+    String str = "";
+    str += "{";
+    if (!this.isEmpty()) {
+        str += reqURL;
+    }
+    str += "}";
+    return str;
+}
+
 public POJOReq ()
 {
     this(null, null, null, null);

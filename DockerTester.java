@@ -70,6 +70,46 @@ public static void test_concurrent_put_two ()
     System.out.println(challenger_node + ": " + cl2.getResponse().resBody);
 }
 
+//propose 2k messages concurrently, alternating between leader and challenger
+public static void test_concurrent_put_k_leader_challenger (int k)
+{
+    boolean is_challenger = false;
+    Client[] clients = new Client[k * 2];
+    for (int i = 0; i < clients.length; i += 1) {
+        String node = leader_node;
+        if (is_challenger) {
+            node = challenger_node;
+        }
+        String key = "key" + i;
+        String val = "val" + i;
+        POJOReq req = new POJOReq(node, "PUT", "/keyValue-store/" + key, 
+                                        "{val: '" + val + "'}");
+        clients[i] = new Client(req);
+        clients[i].fireAsync();
+        is_challenger = !is_challenger;
+    }
+    int donecount = 0;
+    while (donecount != clients.length) {
+        for (int i = 0; i < clients.length; i += 1) {
+            if (clients[i].done()) {
+                donecount += 1;
+            }
+        }
+        if (donecount != clients.length) {
+            donecount = 0;
+            try {
+                Thread.sleep(200); //sleep 200ms
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    for (int i = 0; i < clients.length; i += 1) {
+        HttpRes response = clients[i].getResponse();
+        System.out.println("key" + i + ": " + response.resBody);
+    }
+}
+
 //propose <nodenum> messages concurrently
 public static void test_concurrent_put (int nodenum)
 {
@@ -159,10 +199,10 @@ main (String[] args)
 //    test_get_key(leader_node, "foo");
 
     //add to view
-    test_add_view(new_node);
+//    test_add_view(new_node);
 
     //make concurrent requests on leader_node and challenger_node
-//    test_concurrent_put_two();
+    test_concurrent_put_k_leader_challenger(4);
 
     //TODO: sequence of concurrent requests
     //TODO: delete from view

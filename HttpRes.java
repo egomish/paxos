@@ -19,6 +19,17 @@ public static HttpRes serverError ()
     return res;
 }
 
+public String toString ()
+{
+    String str = "";
+    str += "{";
+    str += this.resCode + " ";
+    str += "(" + this.contentType + "): ";
+    str += this.resBody;
+    str += "}";
+    return str;
+}
+
 public HttpRes ()
 {
     this(0, null);
