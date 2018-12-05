@@ -16,8 +16,14 @@ public void handle (HttpExchange exch)
     HttpRes response;
 
     if ((query != null) && (query.contains("fromhistory=true"))) {
-        //the request is from the server's history--execute it
-        response = doKVS(exch);
+        //the request is from the server's history--it's ready to execute
+        if (query.contains("unsharded=true")) {
+            //the request can be sharded--hand it off to the shard oracle
+            response = this.giveToShardOracle(exch);
+        } else {
+            //the request can be executed on this server
+            response = doKVS(exch);
+        }
     } else {
         //add the request to the server's history, then execute the request
         int reqindex = this.getConsensus(exch);

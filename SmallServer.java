@@ -103,6 +103,37 @@ protected int getConsensus (HttpExchange exch)
     return reqindex;
 }
 
+protected HttpRes giveToShardOracle (HttpExchange exch)
+{
+    //package client request into request body
+    String method = exch.getRequestMethod();
+    String url = exch.getRequestURI().toString();
+    String body = Client.fromInputStream(exch.getRequestBody());
+    POJOReq clientreq = new POJOReq(this.ipAndPort, method, url, body);
+
+    //get oracle address
+    String ip = this.oracleIP;
+
+    //send shard request to oracle
+    POJOReq req = new POJOReq(ip, "POST", "/shard/process", clientreq);
+    Client cl = new Client(req);
+    cl.doSync();
+
+    //return request response to client
+
+    //process request
+    String shardip = this.getShardAt(keyhash);
+    String method = "POST";
+    String url = "/shard/process";
+    String reqbody = request.toJSON();
+    POJOReq req = new POJOReq(shardip, method, url, reqbody);
+    Client cl = new Client(request);
+    cl.doSync();
+
+    //return response
+    HttpRes response =  cl.getResponse();
+}
+
 protected POJOReq[] getHistory ()
 {
     //----| begin transaction |----
@@ -221,6 +252,12 @@ public static void init_server ()
     }
 
     /*
+     *  Initialize the view of the shard directory.
+     *  XXXESG: for now, we use a single server as a directory.
+     */
+    oracleIP = "10.0.0.2:4002";
+
+    /*
      *  Initialize the total order of requests.
      */
     reqHistory = new HashMap<Integer, POJOReq>();
@@ -257,6 +294,7 @@ main(String[] args) throws Exception
     server.createContext("/paxos", new ContextPaxos());
     server.createContext("/view", new ContextView());
     server.createContext("/history", new ContextHistory());
+    server.createContext("/shard", new ContextShard());
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -279,5 +317,7 @@ public static HashSet<String> nodeView;
 public static HashMap<Integer, POJOReq> reqHistory;
 public static int runIndex;
 public static int commitIndex;
+
+public static String oracleIP;
 
 }
