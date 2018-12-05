@@ -11,8 +11,42 @@ import java.util.HashSet;
 import java.util.HashMap;
 
 
-public class SmallServer {
+public class SmallServer implements HttpHandler {
 
+public void handle (HttpExchange exch)
+{
+    String query = exch.getRequestURI();
+    if (query == null) {
+        query = "";
+    }
+
+    if (this.isBackdoorEndpoint(path)) {
+        //execute the request directly
+        this.contextAt(path).handle(exch);
+    } else if (query.contains("fromhistory=true")) {
+        //the request is in the history--execute it
+        this.contextAt(path).handle(exch);
+    } else {
+        //get consensus and add the request to the system's history
+        this.getConsensus(exch);
+    }
+}
+
+private boolean isBackdoorEndpoint (String path)
+{
+    if (path.startsWith("/hello")) {
+        return true;
+    } else if (path.startsWith("/test")) {
+        return true;
+    } else if (path.startsWith("/paxos")) {
+        return true;
+    } else if (path.startsWith("/history")) {
+        return true;
+//    } else if (path.startsWith("/shard")) {
+//        return true;
+    }
+    return false;
+}
 
 protected void logReceive (String method, String path)
 {
@@ -108,7 +142,7 @@ protected POJOReq[] getHistory ()
     //----| begin transaction |----
     POJOReq[] arr = new POJOReq[reqHistory.size()];
     for (int i = 0; i < reqHistory.size(); i += 1) {
-        POJOReq req = reqHistory.get(i);
+        POJOReq req = reqHistory.get(i).clientReq;
         arr[i] = req;
     }
     //----|  end transaction  |----
@@ -117,7 +151,7 @@ protected POJOReq[] getHistory ()
 
 protected POJOReq getHistoryAt (Integer index)
 {
-    return reqHistory.get(index);
+    return reqHistory.get(index).clientReq;
 }
 
 protected int getNextHistoryIndex()
@@ -128,9 +162,9 @@ protected int getNextHistoryIndex()
 /*
  *  Returns true if the history did not already contain an entry at <reqindex>.
  */
-protected boolean addToHistoryAt (int reqindex, POJOReq request)
+protected boolean addToHistoryAt (int reqindex, HistoryElement elem)
 {
-    POJOReq preventry = reqHistory.put(reqindex, request);
+    HistoryElement preventry = reqHistory.put(reqindex, elem);
     if (preventry == null) {
         return true;
     }
@@ -147,25 +181,25 @@ protected void exposeHistoryAt (int reqindex)
     }
 }
 
-protected HttpRes playHistoryTo (int endindex)
+protected void playHistoryTo (int endindex)
 {
-    HttpRes response = null;
     for (runIndex = runIndex; runIndex <= endindex; runIndex += 1) {
         if (runIndex > commitIndex) {
             //TODO: figure out if this is possible
             break;
         }
-        POJOReq fromhistory = reqHistory.get(runIndex);
-        String destip = this.ipAndPort;
-        String method = fromhistory.reqMethod;
-        String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG a hack
-        String body = fromhistory.reqBody;
-        POJOReq request = new POJOReq(destip, method, url, body);
-        Client cl = new Client(request);
-        cl.doSync();
-        response = cl.getResponse();
+        HistoryElement fromhistory = reqHistory.get(runIndex);
+        if (fromhistory.shardID == this.shardID) {
+            String destip = this.ipAndPort;
+            String method = fromhistory.reqMethod;
+            String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG hack
+            String body = fromhistory.reqBody;
+            POJOReq request = new POJOReq(destip, method, url, body);
+            Client cl = new Client(request);
+            cl.doSync();
+            fromhistory.reqResponse = cl.getResponse();
+        }
     }
-    return response;
 }
 
 public static void init_server ()
@@ -223,9 +257,21 @@ public static void init_server ()
     /*
      *  Initialize the total order of requests.
      */
-    reqHistory = new HashMap<Integer, POJOReq>();
+    reqHistory = new HashMap<Integer, HistoryElement>();
     commitIndex = -1;
     runIndex = 0;
+
+    /*
+     *  Add endpoints to the server.
+     */
+    server.serverEndpoints = new HashMap<String, Endpoint>();
+    server.serverEndpoints.put("/hello", new ContextHello());
+    server.serverEndpoints.put("/test", new ContextTest());
+    server.serverEndpoints.put("/keyValue-store", new ContextKVS());
+    server.serverEndpoints.put("/keyValue-store/search", new ContextKVSSearch());
+    server.serverEndpoints.put("/paxos", new ContextPaxos());
+    server.serverEndpoints.put("/view", new ContextView());
+    server.serverEndpoints.put("/history", new ContextHistory());
 }
 
 /* 
@@ -250,13 +296,7 @@ main(String[] args) throws Exception
     /*
      *  Add contexts to the server to respond to RESTful API calls.
      */
-    server.createContext("/hello", new ContextHello());
-    server.createContext("/test", new ContextTest());
-    server.createContext("/keyValue-store", new ContextKVS());
-    server.createContext("/keyValue-store/search", new ContextKVSSearch());
-    server.createContext("/paxos", new ContextPaxos());
-    server.createContext("/view", new ContextView());
-    server.createContext("/history", new ContextHistory());
+    server.createContext("/", server);
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -276,7 +316,9 @@ public static int serverPort;
 public static int processID;
 public static HashSet<String> nodeView;
 
-public static HashMap<Integer, POJOReq> reqHistory;
+public static HashMap<String, SmallServer> serverEndpoints;
+
+public static HashMap<Integer, HistoryElement> reqHistory;
 public static int runIndex;
 public static int commitIndex;
 

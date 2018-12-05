@@ -16,12 +16,7 @@ public void handle (HttpExchange exch)
 
     if (path.startsWith("/paxos/propose")) {
         //---- begin transaction ---
-try {
         response = doPaxosPropose(exch);
-} catch (Exception e) {
-    e.printStackTrace();
-    response = null;
-}
         //---- end transaction ---
     } else if (path.startsWith("/paxos/prepare")) {
         response = doPaxosPrepare(exch);
@@ -43,6 +38,7 @@ private synchronized HttpRes doPaxosPropose (HttpExchange exch)
     //extract the KVS request from the HTTP request
     String reqstr = Client.fromInputStream(exch.getRequestBody());
     POJOReq request = POJOReq.fromJSON(reqstr);
+    request.shardID = nextShardID();
 
     HttpRes res = null;
     int reqindex = -1;

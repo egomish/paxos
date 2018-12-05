@@ -11,23 +11,48 @@ public void handle (HttpExchange exch)
 {
     this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
 
-    String query = exch.getRequestURI().getQuery();
-
     HttpRes response;
+
+    String query = exch.getRequestURI().getQuery();
+    if (query == null) {
+        query = "";
+    }
+
+    if (!query.contains("fromhistory=true")) {
+        //get consensus to add the request to the system's history
+        int reqindex = this.getConsensus(exch);
+
+        //get the result for the request
+        if (reqindex == -1) {
+            return HttpRes.serverError();
+        } else {
+            return this.getResponseAt(reqindex);
+        }
+    }
+
+    //the request is part of the history
+
+
+
+
+
 
     if ((query != null) && (query.contains("fromhistory=true"))) {
         //the request is from the server's history--execute it
         response = doKVS(exch);
-    } else {
-        //add the request to the server's history, then execute the request
-        int reqindex = this.getConsensus(exch);
-        if (reqindex == -1) {
-            response = HttpRes.serverError();
-        } else {
-            response = this.playHistoryTo(reqindex);
-        }
+        sendResponse(exch, response);
+        return;
     }
 
+    //get consensus to add the request to the system's history
+    int reqindex = this.getConsensus(exch);
+
+    //get the result for the request
+    if (reqindex == -1) {
+        response = HttpRes.serverError();
+    } else {
+        response = this.getResponseAt(reqindex);
+    }
     sendResponse(exch, response);
 }
 

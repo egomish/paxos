@@ -47,6 +47,7 @@ public String toString ()
     str += "{";
     if (!this.isEmpty()) {
         str += reqURL;
+        str += " (" + shardID + ")";
     }
     str += "}";
     return str;
@@ -54,15 +55,21 @@ public String toString ()
 
 public POJOReq ()
 {
-    this(null, null, null, null);
+    this(null, null, null, null, null);
 }
 
 public POJOReq (String i, String m, String u, String b)
+{
+    this(i, m, u, b, null);
+}
+
+public POJOReq (String i, String m, String u, String b, Integer s)
 {
     destIP = i;
     reqMethod = m;
     reqURL = u;
     reqBody = b;
+    shardID = s;
 }
 
 
@@ -70,5 +77,6 @@ public String destIP;
 public String reqMethod;
 public String reqURL;
 public String reqBody;
+public Integer shardID;
 
 }
