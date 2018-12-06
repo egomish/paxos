@@ -8,6 +8,10 @@ import java.net.InetSocketAddress;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.io.InputStream;
 
 
 public class SmallServer implements HttpHandler
@@ -16,26 +20,128 @@ public class SmallServer implements HttpHandler
 
 public void handle (HttpExchange exch) throws IOException
 {
-    System.err.println("Handling " + exch.getRequestMethod() + " request...");
-    if (!isPrimary) {
-        HttpResponse response = forwardRequestToPrimary(exch);
-        sendResponse(exch, response.getResponseCode(), response.getResponseBody(), null);
-        return;
+    String ip = this.ipAndPort;
+    String method = exch.getRequestMethod();
+    String url = exch.getRequestURI().toString();
+    String reqbody = SmallServer.fromInputStream(exch.getRequestBody());
+    POJOReq request = new POJOReq(ip, method, url, reqbody);
+    System.out.println("handling: " + request);
+
+    HttpRes response;
+    
+    String path = exch.getRequestURI().getPath();
+    String query = exch.getRequestURI().getQuery();
+    if (query == null) {
+        query = "";
     }
 
-    String path = exch.getRequestURI().getPath();
-    if (path.startsWith("/hello")) {
-        doHello(exch);
-    } else if (path.startsWith("/test")) {
-        doTest(exch);
-    } else if (path.startsWith("/keyValue-store")) {
-        doKVS(exch);
+    if (this.isBackdoorEndpoint(path)) {
+        //execute the request directly
+        response = getEndpoint(path).handle(request);
+    } else if (query.contains("fromhistory==true")) {
+        //the request is in the history--execute it
+        response = getEndpoint(path).handle(request);
+    } else if (this.requiresConsensus(path)) {
+        //get consensus and add the request to the system's history
+        int reqindex = this.getConsensus(request);
+        //TODO: get the result from history and return it as the response
+        response = HttpRes.serverError();
     } else {
-        int rescode = 404;
-        String restype = "application/json";
-        String resmsg = ResponseBody.clientError().toJSON();
-        sendResponse(exch, rescode, resmsg, restype);
+        response = new HttpRes(404, path + " not found");
+        response.contentType = null;
     }
+
+    sendResponse(exch, response);
+}
+
+public static String fromInputStream (InputStream in)
+{
+    String str = "";
+
+    try {
+        int b = in.read();
+        while (b != -1) {
+            str += (char)b;
+            b = in.read();
+        }
+    } catch (IOException e) {
+        System.err.println("I/O exception: " + e.getMessage());
+        str = "";
+    }
+
+    if (str.length() == 0) {
+        str = null;
+    }
+
+    return str;
+}
+
+private void sendResponse (HttpExchange exch, HttpRes response)
+{
+    try {
+        if (response.contentType != null) {
+            exch.getResponseHeaders().set("Content-Type", response.contentType);
+        }
+        exch.sendResponseHeaders(response.resCode, 0);
+        OutputStream out = exch.getResponseBody();
+        if (response.resBody != null) {
+            out.write(response.resBody.getBytes());
+        }
+        out.close();
+    } catch (Exception e) {
+        //some kind of catastrophic error occurred
+        e.printStackTrace();
+        System.err.println("message not sent: " + e.getMessage());
+    }
+}
+
+private boolean isBackdoorEndpoint (String path)
+{
+    Iterator<String> it = backdoorEndpoints.iterator();
+    while (it.hasNext()) {
+        String endpoint = it.next();
+        System.out.print(endpoint + " <= " + path + "?");
+        if (path.startsWith(endpoint)) {
+            System.out.print(" yes");
+            return true;
+        }
+        System.out.println();
+    }
+    return false;
+}
+
+private boolean requiresConsensus (String path)
+{
+    Iterator<String> it = consensusEndpoints.iterator();
+    while (it.hasNext()) {
+        String endpoint = it.next();
+        System.out.print(endpoint + " <= " + path + "?");
+        if (path.startsWith(endpoint)) {
+            System.out.print(" yes");
+            return true;
+        }
+        System.out.println();
+    }
+    return false;
+}
+
+private Context getEndpoint (String path)
+{
+    for (String endpoint : allEndpoints.keySet()) {
+        System.out.print(endpoint + " <= " + path + "?");
+        if (path.startsWith(endpoint)) {
+            System.out.println(" yes");
+            return allEndpoints.get(endpoint);
+        }
+    }
+    return null;
+}
+
+private int getConsensus (POJOReq request)
+{
+    int reqindex = -1;
+    System.out.println("consensus not implemented!!");
+    return reqindex;
 }
 
 //XXX: if key contains '/' characters, key will be parsed as just the 
@@ -110,39 +216,7 @@ private static boolean valueIsValid (String value)
     return true;
 }
 
-private HttpResponse forwardRequestToPrimary (HttpExchange exch)
-{
-    String method = exch.getRequestMethod();
-    String path = exch.getRequestURI().getPath();
-    String query = exch.getRequestURI().getQuery();
-    String reqbody = ClientRequest.inputStreamToString(exch.getRequestBody());
-    HttpResponse response = ClientRequest.sendRequest(primaryIPAddress, method, path, query, reqbody);
-    return response;
-}
-
-//XXX: exceptions are caught here regardless of type
-//XXX: on any failure, server is stopped
-private void sendResponse (HttpExchange exch, 
-                           int rescode, 
-                           String resmsg, 
-                           String restype)
-{
-    try {
-        String method = exch.getRequestMethod();
-        System.err.println("Responding to " + method + " with " + rescode + ".");
-        if (restype != null) {
-            exch.getResponseHeaders().set("Content-Type", restype);
-        }
-        exch.sendResponseHeaders(rescode, 0);
-        OutputStream out = exch.getResponseBody();
-        out.write(resmsg.getBytes());
-        out.close();
-    } catch (Exception e) {
-        e.printStackTrace();
-        System.exit(1);
-    }
-}
-
+/*
 private void doHello (HttpExchange exch)
 {
     String method = exch.getRequestMethod();
@@ -296,34 +370,86 @@ private void doKVS (HttpExchange exch)
     }
     sendResponse(exch, rescode, resmsg, restype);
 }
+*/
+
+private void addEndpoint (String path, Context context, boolean consensus)
+{
+    allEndpoints.put(path, context);
+    if (consensus) {
+        consensusEndpoints.add(path);
+    } else {
+        backdoorEndpoints.add(path);
+    }
+}
 
 private SmallServer()
 {
-    String mainip = System.getenv().get("MAINIP");
-    if (mainip == null) {
-        primaryIPAddress = null;
-        isPrimary = true;
-        kvStore = new HashMap<String, String>();
+    /*
+     *  Initialize ip, port, and pid.
+     */
+    String ipport = System.getenv().get("IP_PORT");
+    if (ipport != null) {
+        ipAndPort = ipport;
     } else {
-        primaryIPAddress = mainip;
-        isPrimary = false;
-        kvStore = null;
+        ipAndPort = "localhost:8080";
     }
+
+    try {
+        String[] strarr = ipAndPort.split(":");
+        serverIP = strarr[0];
+        serverPort = Integer.parseInt(strarr[1]);
+    } catch (ArrayIndexOutOfBoundsException e) {
+        //it would be really weird if we couldn't split ipAndPort on ':'
+        e.printStackTrace();
+        serverIP = null;
+        serverPort = 0;
+    } catch (NumberFormatException e) {
+        //it would be really weird if we couldn't parse the port as an int
+        e.printStackTrace();
+        serverIP = null;
+        serverPort = 0;
+    }
+
+    //XXX: won't work if the last char of the port is the same for any nodes
+    String pid = String.valueOf(ipAndPort.charAt(ipAndPort.length() - 1));
+    try {
+        processID = Integer.valueOf(pid);
+    } catch (NumberFormatException e) {
+        //something really bad has happened if pid isn't a number
+        e.printStackTrace();
+        processID = 0;
+    }
+
+    /*
+     *  Initialize endpoints for the server.
+     */
+    allEndpoints = new HashMap<String, Context>();
+    backdoorEndpoints = new HashSet<String>();
+    consensusEndpoints = new HashSet<String>();
+
+    boolean needconsensus = true;
+    addEndpoint("/hello", new ContextHello(this), !needconsensus);
+    addEndpoint("/keyValue-store", new ContextKVS(this), needconsensus);
 }
 
 public static void
 main(String[] args) throws Exception
 {
-    int port = 8080;
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-    System.err.println("Server running on port " + port + ".");
-    server.createContext("/", new SmallServer());
-    server.setExecutor(null); // creates a default executor
+    SmallServer ss = new SmallServer();
+    HttpServer server = HttpServer.create(new InetSocketAddress(ss.serverIP, ss.serverPort), 0);
+    System.err.println("Server running at " + ss.ipAndPort + ".");
+    server.createContext("/", ss);
+    server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
     server.start();
 }
 
-private String primaryIPAddress;
-private boolean isPrimary;
-private HashMap<String, String> kvStore;
+public String ipAndPort;
+public String serverIP;
+public int serverPort;
+public int processID;
+
+public HashMap<String, Context> allEndpoints;
+private HashSet<String> backdoorEndpoints;
+private HashSet<String> consensusEndpoints;
 
 }
