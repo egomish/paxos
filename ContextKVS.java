@@ -93,7 +93,7 @@ public HttpRes doKVS (POJOReq request)
         resbody.msg = method + " " + url + " not allowed";
     }
 
-//    resbody.payload = this.getHistory();
+    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }
@@ -126,7 +126,7 @@ public HttpRes doKVSSearch (POJOReq request)
         resbody.msg = method + " " + url + " not allowed";
     }
 
-//    resbody.payload = this.getHistory();
+    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }

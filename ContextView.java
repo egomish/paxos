@@ -80,7 +80,7 @@ public HttpRes doView (POJOReq request)
         resbody.msg = method + " " + request.reqURL + " not allowed";
     }
 
-//    resbody.payload = this.getHistory();
+    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }
