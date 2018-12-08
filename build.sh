@@ -8,11 +8,14 @@ javac -cp gson-2.8.5.jar:. SmallServer.java \
                            POJOReq.java \
                            POJOPaxos.java \
                            POJOView.java \
+                           POJOShard.java \
+                           POJONum.java \
                            \
                            ContextHello.java \
                            ContextTest.java \
                            ContextKVS.java \
                            ContextPaxos.java \
                            ContextView.java \
+                           ContextShard.java \
                            \
 

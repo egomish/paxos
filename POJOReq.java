@@ -24,6 +24,23 @@ public static POJOReq fromJSON (String json)
     return pojo;
 }
 
+public boolean equals (POJOReq that)
+{
+    if (!this.destIP.equals(that.destIP)) {
+        return false;
+    }
+    if (!this.reqMethod.equals(that.reqMethod)) {
+        return false;
+    }
+    if (!this.reqURL.equals(that.reqURL)) {
+        return false;
+    }
+    if (!this.reqBody.equals(that.reqBody)) {
+        return false;
+    }
+    return true;
+}
+
 public boolean isEmpty ()
 {
     if (destIP != null) {
@@ -47,7 +64,9 @@ public String toString ()
     str += "{";
     if (!this.isEmpty()) {
         str += reqURL;
-        str += " (" + shardID + ")";
+        if (shardID != null) {
+            str += " (" + shardID + ")";
+        }
     }
     str += "}";
     return str;
@@ -55,21 +74,22 @@ public String toString ()
 
 public POJOReq ()
 {
-    this(null, null, null, null, null);
+    this(null, null, null, null);
 }
 
 public POJOReq (String i, String m, String u, String b)
-{
-    this(i, m, u, b, null);
-}
-
-public POJOReq (String i, String m, String u, String b, Integer s)
 {
     destIP = i;
     reqMethod = m;
     reqURL = u;
     reqBody = b;
-    shardID = s;
+    shardID = null;
+
+    paxosProvenance = null;
+    historyIndex = null;
+    urlPath = null;
+    urlQuery = null;
+    charEncoding = null;
 }
 
 
@@ -77,6 +97,12 @@ public String destIP;
 public String reqMethod;
 public String reqURL;
 public String reqBody;
+public int[] paxosProvenance;
 public Integer shardID;
+public Integer historyIndex;
+
+public String urlPath;
+public String urlQuery;
+public String charEncoding;
 
 }

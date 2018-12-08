@@ -1,6 +1,15 @@
 public class HttpRes {
 
 
+public static HttpRes notAllowedError (String method, String path)
+{
+    HttpRes res = new HttpRes();
+    res.resCode = 405;
+    res.resBody = method + " " + path + " not allowed";
+    res.contentType = null;
+    return res;
+}
+
 public static HttpRes clientError ()
 {
     HttpRes res = new HttpRes();

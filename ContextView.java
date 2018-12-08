@@ -11,30 +11,17 @@ public void handle (HttpExchange exch)
 {
     this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
 
-    String query = exch.getRequestURI().getQuery();
-
+    POJOReq request = this.parseRequest(exch);
+    request = this.consensusProtocol(request);
     HttpRes response;
 
-    if ((query != null) && (query.contains("fromhistory=true"))) {
-        //the request is from the server's history--execute it
-        response = doView(exch);
-    } else {
-        //add the request to the server's history, then execute the request
-        int reqindex = this.getConsensus(exch);
-        if (reqindex == -1) {
-            response = HttpRes.serverError();
-        } else {
-            response = this.playHistoryTo(reqindex);
-        }
-    }
-
+    response = doView(request);
     sendResponse(exch, response);
 }
 
-public HttpRes doView (HttpExchange exch)
+public HttpRes doView (POJOReq request)
 {
-    String method = exch.getRequestMethod();
-    String path = exch.getRequestURI().getPath();
+    String method = request.reqMethod;
 
     int rescode;
     POJOView resbody;
@@ -44,15 +31,14 @@ public HttpRes doView (HttpExchange exch)
         rescode = 200;
         resbody = new POJOView(this.getNodeView());
     } else if ((method.equals("PUT")) || (method.equals("POST"))) {
-        String body = Client.fromInputStream(exch.getRequestBody());
-        String ipport = POJOIPPort.fromJSON(body).ip_port;
-
-        //get the node caught up
+        String ipport = POJOIPPort.fromJSON(request.reqBody).ip_port;
+        //help the newly-added node catch up on history
         String history = new POJOHistory(this.getHistory()).toJSON();
-        POJOReq request = new POJOReq(ipport, "POST", "/history", history);
-        Client cl = new Client(request);
+        POJOReq histreq = new POJOReq(ipport, "POST", "/history", history);
+        Client cl = new Client(histreq);
         cl.doSync();
 
+        //if the newly-added node has a recent history, add it to the view
         HttpRes res = cl.getResponse();
         resbody = new POJOView();
         if (res.resCode == 200) {
@@ -73,14 +59,28 @@ public HttpRes doView (HttpExchange exch)
             resbody.msg = "Could not get " + ipport + " caught up";
             //if we wanted to STNITH tardy nodes, this might be the place
         }
-//    } else if (method.equals("DELETE")) {
+    } else if (method.equals("DELETE")) {
+        String ipport = POJOIPPort.fromJSON(request.reqBody).ip_port;
+        resbody = new POJOView();
+        boolean success = this.removeFromView(ipport);
+        if (success) {
+            rescode = 200;
+            resbody.result = "Success";
+            resbody.msg = "Successfully removed " + ipport + " from view";
+            response = new HttpRes(200, resbody.toJSON());
+        } else {
+            rescode = 404;
+            resbody.result = "Error";
+            resbody.msg = ipport + " is not in view";
+        }
     } else {
         rescode = 405;
         resbody = new POJOView();
         resbody.result = "Error";
-        resbody.msg = method + " " + path + " not allowed";
+        resbody.msg = method + " " + request.reqURL + " not allowed";
     }
 
+//    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }

@@ -9,26 +9,43 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.TreeMap;
 
 
-public class SmallServer implements HttpHandler {
+public class SmallServer {
 
-public void handle (HttpExchange exch)
+public POJOReq parseRequest (HttpExchange exch)
 {
-    String query = exch.getRequestURI();
-    if (query == null) {
-        query = "";
-    }
+    String ip = this.ipAndPort;
+    String method = exch.getRequestMethod();
+    String url = exch.getRequestURI().toString();
+    String body = Client.fromInputStream(exch.getRequestBody());
+    POJOReq request = new POJOReq(ip, method, url, body);
 
-    if (this.isBackdoorEndpoint(path)) {
-        //execute the request directly
-        this.contextAt(path).handle(exch);
-    } else if (query.contains("fromhistory=true")) {
-        //the request is in the history--execute it
-        this.contextAt(path).handle(exch);
+    request.urlPath = exch.getRequestURI().getPath();
+    request.urlQuery = exch.getRequestURI().getQuery();
+    request.charEncoding = exch.getRequestHeaders().getFirst("Content-type");
+
+    return request;
+}
+
+public POJOReq consensusProtocol (POJOReq request)
+{
+    String path = request.urlPath;
+    String query = request.urlQuery;
+
+    if (isBackdoorEndpoint(path)) {
+        //handle request directly
+        return request;
+    } else if (isFromHistory(query)) {
+        //handle request directly
+        return request;
     } else {
-        //get consensus and add the request to the system's history
-        this.getConsensus(exch);
+        //get consensus for the request before handling it
+        int reqindex = this.getConsensus(request);
+        request.historyIndex = reqindex;
+        return request;
     }
 }
 
@@ -42,10 +59,51 @@ private boolean isBackdoorEndpoint (String path)
         return true;
     } else if (path.startsWith("/history")) {
         return true;
-//    } else if (path.startsWith("/shard")) {
-//        return true;
     }
     return false;
+}
+
+private boolean isFromHistory (String query)
+{
+    if ((query != null) && (query.contains("fromhistory=true"))) {
+        return true;
+    }
+    return false;
+}
+
+public POJOReq shardProtocol (POJOReq request, String key)
+{
+    Integer shardid = keyDir.get(key);
+    if (shardid != null) {
+        request.shardID = shardid;
+        return request;
+    }
+    shardid = this.getSparsestShard();
+    keyDir.put(key, shardid);
+    request.shardID = shardid;
+    return request;
+}
+
+protected int getSparsestShard ()
+{
+    int smalli = 0;
+    for (int i = 0; i < shardDir.size(); i += 1) {
+        if (shardDir.get(i).size() < shardDir.get(smalli).size()) {
+            smalli = i;
+        }
+    }
+    return smalli;
+}
+
+protected int getDensestShard ()
+{
+    int largei = 0;
+    for (int i = 0; i < shardDir.size(); i += 1) {
+        if (shardDir.get(i).size() > shardDir.get(largei).size()) {
+            largei = i;
+        }
+    }
+    return largei;
 }
 
 protected void logReceive (String method, String path)
@@ -60,8 +118,8 @@ protected void logRespond (HttpRes response)
 
 protected void log (String str)
 {
-//    System.err.println("(" + Thread.currentThread().getName() + ") " + str);
-    System.err.println("(" + Thread.currentThread().getName() + ") [" + this.getClass().getName() + "] " + str);
+    System.err.println("(" + Thread.currentThread().getName() + ") " + str);
+//    System.err.println("(" + Thread.currentThread().getName() + ") [" + this.getClass().getName() + "] " + str);
 }
 
 protected void sendResponse (HttpExchange exch, HttpRes res)
@@ -99,29 +157,29 @@ protected boolean addToView (String ipport)
     return nodeView.add(ipport);
 }
 
+protected boolean removeFromView (String ipport)
+{
+    boolean removed = nodeView.remove(ipport);
+    return removed;
+}
+
 protected int getQuorumSize ()
 {
     return (nodeView.size() / 2 + 1);
 }
 
 /*
- *  Adds the request to the history and returns the index it was added at.
+ *  Uses Paxos to place the request in the history, adds metadata, then 
+ *  returns the request.
  */
-protected int getConsensus (HttpExchange exch)
+protected int getConsensus (POJOReq request)
 {
-    int reqindex = -1;
-
-    //create request to get consensus on
-    String ip = this.ipAndPort;
-    String method = exch.getRequestMethod();
-    String url = exch.getRequestURI().toString();
-    String reqbody = Client.fromInputStream(exch.getRequestBody());
-    POJOReq prop = new POJOReq(ip, method, url, reqbody);
-    String body = prop.toJSON();
-
-    //send the request for consensus
+    String ip = request.destIP;
+    String body = request.toJSON();
     Client cl = new Client(new POJOReq(ip, "POST", "/paxos/propose", body));
     cl.doSync();
+
+    int reqindex;
     HttpRes res = cl.getResponse();
     if (res.resCode == 200) {
         try {
@@ -129,10 +187,12 @@ protected int getConsensus (HttpExchange exch)
         } catch (NumberFormatException e) {
             //something has gone horribly wrong if resbody isn't reqindex
             e.printStackTrace();
+            reqindex = -1;
         }
     } else {
         //catastrophic failure occurred while getting consensus
         System.err.println("bad consensus: " + res.resCode + " " + res.resBody);
+        reqindex = -1;
     }
     return reqindex;
 }
@@ -142,7 +202,7 @@ protected POJOReq[] getHistory ()
     //----| begin transaction |----
     POJOReq[] arr = new POJOReq[reqHistory.size()];
     for (int i = 0; i < reqHistory.size(); i += 1) {
-        POJOReq req = reqHistory.get(i).clientReq;
+        POJOReq req = reqHistory.get(i);
         arr[i] = req;
     }
     //----|  end transaction  |----
@@ -151,7 +211,7 @@ protected POJOReq[] getHistory ()
 
 protected POJOReq getHistoryAt (Integer index)
 {
-    return reqHistory.get(index).clientReq;
+    return reqHistory.get(index);
 }
 
 protected int getNextHistoryIndex()
@@ -162,13 +222,33 @@ protected int getNextHistoryIndex()
 /*
  *  Returns true if the history did not already contain an entry at <reqindex>.
  */
-protected boolean addToHistoryAt (int reqindex, HistoryElement elem)
+protected boolean addToHistoryAt (int reqindex, POJOReq request)
 {
-    HistoryElement preventry = reqHistory.put(reqindex, elem);
+    POJOReq preventry = reqHistory.put(reqindex, request);
     if (preventry == null) {
         return true;
     }
     return false;
+}
+
+protected synchronized void replayHistory ()
+{
+    int endindex = commitIndex;
+    commitIndex = 0;
+    this.kvStore = new HashMap<String, String>();
+
+    for (runIndex = 0; runIndex <= endindex; runIndex += 1) {
+        POJOReq fromhistory = reqHistory.get(runIndex);
+        if (fromhistory.shardID == this.shardID) {
+            String destip = this.ipAndPort;
+            String method = fromhistory.reqMethod;
+            String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG hack
+            String body = fromhistory.reqBody;
+            POJOReq request = new POJOReq(destip, method, url, body);
+            Client cl = new Client(request);
+            cl.doSync();
+        }
+    }
 }
 
 protected void exposeHistoryAt (int reqindex)
@@ -178,27 +258,6 @@ protected void exposeHistoryAt (int reqindex)
         commitIndex = reqindex;
     } else if (reqindex < commitIndex + 1) {
        //do nothing--history[reqindex] has already been exposed
-    }
-}
-
-protected void playHistoryTo (int endindex)
-{
-    for (runIndex = runIndex; runIndex <= endindex; runIndex += 1) {
-        if (runIndex > commitIndex) {
-            //TODO: figure out if this is possible
-            break;
-        }
-        HistoryElement fromhistory = reqHistory.get(runIndex);
-        if (fromhistory.shardID == this.shardID) {
-            String destip = this.ipAndPort;
-            String method = fromhistory.reqMethod;
-            String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG hack
-            String body = fromhistory.reqBody;
-            POJOReq request = new POJOReq(destip, method, url, body);
-            Client cl = new Client(request);
-            cl.doSync();
-            fromhistory.reqResponse = cl.getResponse();
-        }
     }
 }
 
@@ -216,18 +275,18 @@ public static void init_server ()
 
     try {
         String[] strarr = ipAndPort.split(":");
-        serverIP = strarr[0];
-        serverPort = Integer.parseInt(strarr[1]);
+        ippIP = strarr[0];
+        ippPort = Integer.parseInt(strarr[1]);
     } catch (ArrayIndexOutOfBoundsException e) {
         //it would be really weird if we couldn't split ipAndPort on ':'
         e.printStackTrace();
-        serverIP = null;
-        serverPort = 0;
+        ippIP = null;
+        ippPort = 0;
     } catch (NumberFormatException e) {
         //it would be really weird if we couldn't parse the port as an int
         e.printStackTrace();
-        serverIP = null;
-        serverPort = 0;
+        ippIP = null;
+        ippPort = 0;
     }
 
     //XXX: won't work if the last char of the port is the same for any nodes
@@ -257,21 +316,34 @@ public static void init_server ()
     /*
      *  Initialize the total order of requests.
      */
-    reqHistory = new HashMap<Integer, HistoryElement>();
+    reqHistory = new HashMap<Integer, POJOReq>();
     commitIndex = -1;
     runIndex = 0;
 
     /*
-     *  Add endpoints to the server.
+     *  Initialize sharding.
      */
-    server.serverEndpoints = new HashMap<String, Endpoint>();
-    server.serverEndpoints.put("/hello", new ContextHello());
-    server.serverEndpoints.put("/test", new ContextTest());
-    server.serverEndpoints.put("/keyValue-store", new ContextKVS());
-    server.serverEndpoints.put("/keyValue-store/search", new ContextKVSSearch());
-    server.serverEndpoints.put("/paxos", new ContextPaxos());
-    server.serverEndpoints.put("/view", new ContextView());
-    server.serverEndpoints.put("/history", new ContextHistory());
+    shardID = 0;
+    keyDir = new HashMap<String, Integer>();
+    shardDir = new ArrayList<ArrayList<String>>();
+
+    String shards = System.getenv().get("S");
+    if (shards != null) {
+        try {
+            shardCount = Integer.valueOf(shards);
+        } catch (NumberFormatException e) {
+            shardCount = 1;
+        }
+    } else {
+        shardCount = 1;
+    }
+    shardDir.add(new ArrayList<String>());
+    shardView = new TreeMap<String, Integer>();
+//    int count = 0;
+//    for (int i = 0; i < shardCount; i += 1) {
+//        String node = nodeView.get(i);
+//        shardView.add(node, i % shardView.size());
+//    }
 }
 
 /* 
@@ -290,13 +362,19 @@ main(String[] args) throws Exception
     /*
      *  Bind the server to the specified ip and port.
      */
-    HttpServer server = HttpServer.create(new InetSocketAddress(serverIP, serverPort), 0);
+    HttpServer server = HttpServer.create(new InetSocketAddress(ippIP, ippPort), 0);
     System.err.println("Server running at " + ipAndPort + ".");
 
     /*
      *  Add contexts to the server to respond to RESTful API calls.
      */
-    server.createContext("/", server);
+    server.createContext("/hello", new ContextHello());
+    server.createContext("/test", new ContextTest());
+    server.createContext("/keyValue-store", new ContextKVS());
+    server.createContext("/paxos", new ContextPaxos());
+    server.createContext("/view", new ContextView());
+    server.createContext("/history", new ContextHistory());
+    server.createContext("/shard", new ContextShard());
 
     /*
      *  Allow the server to use threads to handle requests.
@@ -311,15 +389,21 @@ main(String[] args) throws Exception
 
 
 public static String ipAndPort;
-public static String serverIP;
-public static int serverPort;
+public static String ippIP;
+public static int ippPort;
 public static int processID;
 public static HashSet<String> nodeView;
 
-public static HashMap<String, SmallServer> serverEndpoints;
+public static HashMap<String, String> kvStore;
 
-public static HashMap<Integer, HistoryElement> reqHistory;
+public static HashMap<Integer, POJOReq> reqHistory;
 public static int runIndex;
 public static int commitIndex;
+
+public static int shardID;
+public static int shardCount;
+public static TreeMap<String, Integer> shardView;
+public static ArrayList<ArrayList<String>> shardDir;
+public static HashMap<String, Integer> keyDir;
 
 }

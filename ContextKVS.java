@@ -3,6 +3,7 @@ import com.sun.net.httpserver.HttpHandler;
 import java.net.URLDecoder;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
+import java.util.regex.Pattern;
 
 public class ContextKVS extends SmallServer implements HttpHandler {
 
@@ -11,60 +12,35 @@ public void handle (HttpExchange exch)
 {
     this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
 
+    POJOReq request = this.parseRequest(exch);
+    request = this.consensusProtocol(request);
+    request = this.shardProtocol(request, parseKeyFromURL(request.reqURL));
     HttpRes response;
 
-    String query = exch.getRequestURI().getQuery();
-    if (query == null) {
-        query = "";
-    }
-
-    if (!query.contains("fromhistory=true")) {
-        //get consensus to add the request to the system's history
-        int reqindex = this.getConsensus(exch);
-
-        //get the result for the request
-        if (reqindex == -1) {
-            return HttpRes.serverError();
-        } else {
-            return this.getResponseAt(reqindex);
-        }
-    }
-
-    //the request is part of the history
-
-
-
-
-
-
-    if ((query != null) && (query.contains("fromhistory=true"))) {
-        //the request is from the server's history--execute it
-        response = doKVS(exch);
-        sendResponse(exch, response);
-        return;
-    }
-
-    //get consensus to add the request to the system's history
-    int reqindex = this.getConsensus(exch);
-
-    //get the result for the request
-    if (reqindex == -1) {
-        response = HttpRes.serverError();
+    System.out.println("for shard: " + request.shardID);
+    System.out.println("this shard: " + this.shardID);
+    if ((request.shardID == null) || (request.shardID == this.shardID)) {
+        response = doKVS(request);
     } else {
-        response = this.getResponseAt(reqindex);
+        response = new HttpRes(412, "not my shard");
+        response.contentType = null;
     }
     sendResponse(exch, response);
 }
 
-public HttpRes doKVS (HttpExchange exch)
+public HttpRes doKVS (POJOReq request)
 {
-    String method = exch.getRequestMethod();
-    String path = exch.getRequestURI().getPath();
-    String urlkey = parseKeyFromPath(path);
+    String method = request.reqMethod;
+    String url = request.reqURL;
+    String urlkey = parseKeyFromURL(url);
 
     int rescode;
     POJOKVStore resbody = new POJOKVStore();
     HttpRes response;
+
+    if (url.startsWith("/keyValue-store/search")) {
+        response = doKVSSearch(request);
+    }
 
     if (method.equals("GET")) {
         String value = kvStore.get(urlkey);
@@ -78,7 +54,7 @@ public HttpRes doKVS (HttpExchange exch)
             resbody.value = value;
         }
     } else if ((method.equals("PUT")) || (method.equals("POST"))) {
-        String reqvalue = parseValueFromRequest(exch);
+        String reqvalue = parseVal(request.reqBody, request.charEncoding);
         if (!keyIsValid(urlkey)) {
             rescode = 422;
             resbody.result = "Error";
@@ -114,43 +90,72 @@ public HttpRes doKVS (HttpExchange exch)
     } else {
         rescode = 405;
         resbody.result = "Error";
-        resbody.msg = method + " " + path + " not allowed";
+        resbody.msg = method + " " + url + " not allowed";
     }
 
-    resbody.payload = this.getHistory();
+//    resbody.payload = this.getHistory();
+    response = new HttpRes(rescode, resbody.toJSON());
+    return response;
+}
+
+public HttpRes doKVSSearch (POJOReq request)
+{
+    String method = request.reqMethod;
+    String url = request.reqURL;
+    String urlkey = parseKeyFromURL(url);
+
+    int rescode;
+    POJOKVStore resbody = new POJOKVStore();
+    HttpRes response;
+
+    if (method.equals("GET")) {
+        String value = kvStore.get(urlkey);
+        if (value == null) {
+            rescode = 404;
+            resbody.result = "Error";
+            resbody.msg = "Key does not exist";
+            resbody.isExists = false;
+        } else {
+            rescode = 200;
+            resbody.result = "Success";
+            resbody.isExists = true;
+        }
+    } else {
+        rescode = 405;
+        resbody.result = "Error";
+        resbody.msg = method + " " + url + " not allowed";
+    }
+
+//    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }
 
 //XXX: if key contains '/' characters, key will be parsed incorrectly
-protected static String parseKeyFromPath (String path)
+protected static String parseKeyFromURL (String url)
 {
-    if (path == null) {
-        return null;
-    }
+    String path = url.split(Pattern.quote("?"))[0]; //remove the query portion, if any
     String[] strarr = path.split("/");
-    String key = strarr[strarr.length - 1];
+    String key = strarr[strarr.length - 1]; //get the last token in the path
     return key;
 }
 
 //XXX: only handles requests with no content type or form-urlecoded
 //     assumes that if there is an encoding, only the first one matters
-protected static String parseValueFromRequest (HttpExchange exch)
+protected static String parseVal (String reqbody, String encoding)
 {
-    String body = Client.fromInputStream(exch.getRequestBody());
-    POJOKeyVal reqbody = POJOKeyVal.fromJSON(body);
-    String value = reqbody.val;
+    POJOKeyVal pojo = POJOKeyVal.fromJSON(reqbody);
+    String value = pojo.val;
 
-    String contenttype = exch.getRequestHeaders().getFirst("Content-type");
-    if (contenttype != null) {
-        if (contenttype.equals("application/x-www-form-urlencoded")) {
+    if (encoding != null) {
+        if (encoding.equals("application/x-www-form-urlencoded")) {
             try {
                 value = URLDecoder.decode(value, "UTF-8");
             } catch (UnsupportedEncodingException e) {
                 System.err.println("bad encoding: " + e.getMessage());
             }
         } else {
-            System.err.println("unknown encoding: " + contenttype);
+            System.err.println("unknown encoding: " + encoding);
         }
     }
 
@@ -198,7 +203,5 @@ protected ContextKVS ()
     kvStore = new HashMap<String, String>();
 }
 
-
-public static HashMap<String, String> kvStore;
 
 }

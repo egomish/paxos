@@ -9,46 +9,38 @@ public void handle (HttpExchange exch)
 {
 //    this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
 
-    String method = exch.getRequestMethod();
-    String path = exch.getRequestURI().getPath();
-
+    POJOReq request = this.parseRequest(exch);
     HttpRes response;
 
-    if (path.startsWith("/paxos/propose")) {
+    if (request.urlPath.startsWith("/paxos/propose")) {
         //---- begin transaction ---
-        response = doPaxosPropose(exch);
+        response = doPaxosPropose(request);
         //---- end transaction ---
-    } else if (path.startsWith("/paxos/prepare")) {
-        response = doPaxosPrepare(exch);
-    } else if (path.startsWith("/paxos/accept")) {
-        response = doPaxosAccept(exch);
-    } else if (path.startsWith("/paxos/commit")) {
-        response = doPaxosCommit(exch);
+    } else if (request.urlPath.startsWith("/paxos/prepare")) {
+        response = doPaxosPrepare(request);
+    } else if (request.urlPath.startsWith("/paxos/accept")) {
+        response = doPaxosAccept(request);
+    } else if (request.urlPath.startsWith("/paxos/commit")) {
+        response = doPaxosCommit(request);
     } else {
-        String resmsg = method + " " + path + " not allowed";
-        response = new HttpRes(405, resmsg);
-        response.contentType = null;
+        response = HttpRes.notAllowedError(request.reqMethod, request.urlPath);
     }
 
     sendResponse(exch, response);
 }
 
-private synchronized HttpRes doPaxosPropose (HttpExchange exch)
+private synchronized HttpRes doPaxosPropose (POJOReq request)
 {
-    //extract the KVS request from the HTTP request
-    String reqstr = Client.fromInputStream(exch.getRequestBody());
-    POJOReq request = POJOReq.fromJSON(reqstr);
-    request.shardID = nextShardID();
+    POJOReq clientreq = POJOReq.fromJSON(request.reqBody);
 
-    HttpRes res = null;
     int reqindex = -1;
     while (reqindex < 0) {
-        this.log("proposing " + request.reqURL + "...");
+        this.log("proposing " + clientreq.reqURL + "...");
         int seqnum = nextProposalNumber();
         if (reqindex == -1) {
             reqindex = this.getNextHistoryIndex();
         }
-        reqindex = doProposal(seqnum, reqindex, request);
+        reqindex = doProposal(seqnum, reqindex, clientreq);
     }
     HttpRes response = new HttpRes(200, Integer.toString(reqindex));
     return response;
@@ -159,11 +151,9 @@ private int doProposal (int seqnum, int reqindex, POJOReq request)
     return commiti;
 }
 
-private HttpRes doPaxosPrepare (HttpExchange exch)
+private HttpRes doPaxosPrepare (POJOReq request)
 {
-try {
-    String recvstr = Client.fromInputStream(exch.getRequestBody());
-    POJOPaxos recv = POJOPaxos.fromJSON(recvstr);
+    POJOPaxos recv = POJOPaxos.fromJSON(request.reqBody);
 
     HttpRes response;
 
@@ -187,7 +177,7 @@ try {
         //promise to agree and respond with accepted value at reqindex
         this.log("[Acceptor] " + recv.seqNum + " -> ACK(prepare [" + recv.reqIndex + "] " + hist + ").");
         this.seqNum = recv.seqNum;
-        System.out.println("[Acceptor] history[" + recv.reqIndex + "] is: " + hist);
+//        System.out.println("[Acceptor] history[" + recv.reqIndex + "] is: " + hist);
         POJOPaxos resbody = new POJOPaxos(recv.seqNum, recv.reqIndex, hist);
         response = new HttpRes(200, resbody.toJSON());
     } else {
@@ -198,17 +188,11 @@ try {
     }
 
     return response;
-} catch (Exception e) {
-    e.printStackTrace();
-    return null;
-}
 }
 
-private HttpRes doPaxosAccept (HttpExchange exch)
+private HttpRes doPaxosAccept (POJOReq request)
 {
-    String recvstr = Client.fromInputStream(exch.getRequestBody());
-    POJOPaxos recv = POJOPaxos.fromJSON(recvstr);
-
+    POJOPaxos recv = POJOPaxos.fromJSON(request.reqBody);
     HttpRes response;
 
     //get the request from history at the reqindex--it will be
@@ -250,25 +234,23 @@ private HttpRes doPaxosAccept (HttpExchange exch)
     return response;
 }
 
-private HttpRes doPaxosCommit (HttpExchange exch)
+private HttpRes doPaxosCommit (POJOReq request)
 {
-    String recvstr = Client.fromInputStream(exch.getRequestBody());
-    POJOPaxos recv = POJOPaxos.fromJSON(recvstr);
-
+    POJOPaxos recv = POJOPaxos.fromJSON(request.reqBody);
     HttpRes response;
 
     //parse the proposal value into an API call
-    POJOReq request = recv.accValue;
+    POJOReq clientreq = recv.accValue;
 
-    //add the request to history, if it isn't already there
-    //XXX: what if there was already a value but it wasn't <request>?
-    this.addToHistoryAt(recv.reqIndex, request);
+    //add the client request to history, if it isn't already there
+    //XXX: what if there was already a value but it wasn't <clientreq>?
+    this.addToHistoryAt(recv.reqIndex, clientreq);
 
     //expose the proposal value so it's really in the history
-    System.out.println("exposing history at " + recv.reqIndex);
+//    System.out.println("exposing history at " + recv.reqIndex);
     this.exposeHistoryAt(recv.reqIndex);
 
-    this.log("[Acceptor] " + recv.seqNum + " -> ACK(committed [" + recv.reqIndex + "] " + request + ").");
+    this.log("[Acceptor] " + recv.seqNum + " -> ACK(committed [" + recv.reqIndex + "] " + clientreq + ").");
     response = new HttpRes(200, "committed");
     response.contentType = null;
 

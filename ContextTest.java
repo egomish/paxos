@@ -32,8 +32,7 @@ public void doTest (HttpExchange exch)
             response = new HttpRes(200, resmsg);
         }
     } else {
-        String resmsg = method + " " + path + " not allowed";
-        response = new HttpRes(405, resmsg);
+        response = HttpRes.notAllowedError(method, path);
     }
 
     response.contentType = null;

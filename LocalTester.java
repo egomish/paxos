@@ -1,75 +1,65 @@
 public class LocalTester {
 
 
+public static String[] view = {"localhost:8080"};
+
+public static String leader_node = view[0];
+
+public static String[] keys = {"key0", "key1", "key2", "key3", "key4", "key5"};
+public static String[] vals = {"val0", "val1", "val2", "val3", "val4", "val5"};
+public static int key_index = -1;
+
+
+//get "Hello world!" from all nodes in the cluster
+public static void test_hello ()
+{
+    for (String node : view) {
+        POJOReq request = new POJOReq(node, "GET", "/hello", null);
+        Client cl = new Client(request);
+        cl.doSync();
+        System.out.println(node + ": " + cl.getResponse().resBody);
+    }
+}
+
+//on <node>, <key>=<val>
+public static void test_put_key (String node, String key, String val)
+{
+    String reqbody = "{val: '" + val + "'}";
+    POJOReq request = new POJOReq(node, "POST", "/keyValue-store/" + key, reqbody);
+    Client cl = new Client(request);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
+public static void test_delete_key (String node, String key)
+{
+    POJOReq request = new POJOReq(node, "DELETE", "/keyValue-store/" + key, null);
+    Client cl = new Client(request);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
+//on <node>, <key>=?
+public static void test_get_key (String node, String key)
+{
+    POJOReq request = new POJOReq(node, "GET", "/keyValue-store/" + key, null);
+    Client cl = new Client(request);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
 public static void
 main (String[] args)
 {
-    HttpResponse response;
+    //smoke test
+//    test_hello();
 
-//put bad key "foo"=null
-    System.out.println("foo=NULL: ");
-    String service = "/keyValue-store/";
-    System.out.println("service: " + service);
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "PUT", service, null, 
-                                         "{'val':'no key'}");
-    System.out.println("8080: " + response.getResponseBody());
-
-/*
-//hello world
-    System.out.println("hello world: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                        "GET", "/hello", null, 
-                                        null);
-    System.out.println("8080: " + response.getResponseBody());
-
-//put new key "foo"="bart"
-    System.out.println("foo=bart: ");
-    String service = "/keyValue-store/foo";
-    System.out.println("service: " + service);
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "PUT", service, null, 
-                                         "{'val':'bart'}");
-    System.out.println("8080: " + response.getResponseBody());
-
-//put new key "subject"="Distributed System"
-    System.out.println("subject=Distributed System: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "PUT", "/keyValue-store/subject", 
-                                         null,
-                                         "{'val': 'Distributed System'}");
-    System.out.println("8080: " + response.getResponseBody());
-
-//get key "subject"
-    System.out.println("subject=?: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "GET", "/keyValue-store/subject", 
-                                         null,
-                                         null);
-    System.out.println("8080: " + response.getResponseBody());
-
-//check for key "foo"
-    System.out.println("foo?: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "GET", "/keyValue-store/search/foo", null,
-                                         null);
-    System.out.println("8080: " + response.getResponseBody());
-
-//get key "foo"
-    System.out.println("foo=?: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "GET", "/keyValue-store/foo", null,
-                                         null);
-    System.out.println("8080: " + response.getResponseBody());
-
-//get non-existent key "faa"
-    System.out.println("faa=?: ");
-    response = ClientRequest.sendRequest("localhost:8080",
-                                         "GET", "/keyValue-store/faa", null,
-                                         null);
-    System.out.println("8080: " + response.getResponseBody());
-*/
-
+    //put key on [0], put key on [1], delete key from [0], put key on [0], get key from [1]
+    test_put_key(leader_node, "foo", "bar");
+    test_put_key(leader_node, "baz", "bat");
+    test_delete_key(leader_node, "foo");
+    test_put_key(leader_node, "blah", "blahval");
+    test_get_key(leader_node, "baz");
 }
 
 

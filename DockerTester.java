@@ -177,6 +177,31 @@ public static void test_delete_view (String ipport)
     System.out.println(leader_node + ": " + view.getResponse().resBody);
 }
 
+public static void test_change_shard (String node, int number)
+{
+    String reqbody = "{num: '" + number + "'}";
+    POJOReq req = new POJOReq(node, "POST", "/shard/changeShardNumber", reqbody);
+    Client cl = new Client(req);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
+public static void test_shard_get_this (String node)
+{
+    POJOReq req = new POJOReq(node, "GET", "/shard/my_id", null);
+    Client cl = new Client(req);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
+public static void test_shard_get_all (String node)
+{
+    POJOReq req = new POJOReq(node, "GET", "/shard/all_ids", null);
+    Client cl = new Client(req);
+    cl.doSync();
+    System.out.println(node + ": " + cl.getResponse().resBody);
+}
+
 //make sure new nodes stay consistent with the cluster's history
 public static void test_put_add_put ()
 {
@@ -193,21 +218,30 @@ main (String[] args)
     //smoke test
 //    test_hello();
 
-    //put foo=bar
 //    test_put_key(leader_node, "foo", "bar");
-    //get foo
 //    test_get_key(leader_node, "foo");
 
-    //add to view
+//    test_concurrent_put_k_leader_challenger(4);
+
 //    test_add_view(new_node);
 
-    //make concurrent requests on leader_node and challenger_node
-    test_concurrent_put_k_leader_challenger(4);
+//    test_delete_view("10.0.0.3:4003");
+//    test_delete_view("10.0.0.4:4004");
 
-    //TODO: sequence of concurrent requests
-    //TODO: delete from view
     //TODO: node crashes and immediately restarts
     //TODO: node crashes and never recovers
+
+//    test_put_key(leader_node, "key1", "val1");
+//    test_put_key(leader_node, "key2", "val2");
+    test_change_shard(leader_node, 2);
+//    for (String node : view) {
+//        test_get_key(node, "key2");
+//    }
+
+    for (String node : view) {
+        test_shard_get_this(leader_node);
+        test_shard_get_all(leader_node);
+    }
 }
 
 

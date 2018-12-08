@@ -38,9 +38,11 @@ public POJOView (String[] arr)
         }
         view = view.substring(0, view.length() - 1); //strip trailing ','
     }
+    payload = null;
 }
 
 
 public String view;
+public POJOReq[] payload;
 
 }

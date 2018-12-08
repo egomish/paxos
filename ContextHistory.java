@@ -31,9 +31,7 @@ public void doHistory (HttpExchange exch)
         response = new HttpRes(200, Integer.toString(history.length));
         response.contentType = null;
     } else {
-        String resmsg = method + " " + path + " not allowed";
-        response = new HttpRes(405, resmsg);
-        response.contentType = null;
+        response = HttpRes.notAllowedError(method, path);
     }
 
     sendResponse(exch, response);
