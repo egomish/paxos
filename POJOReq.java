@@ -85,7 +85,7 @@ public POJOReq (String i, String m, String u, String b)
     reqBody = b;
     shardID = null;
 
-    paxosProvenance = null;
+    msgUID = (i + m + u + b).hashCode();
     historyIndex = null;
     urlPath = null;
     urlQuery = null;
@@ -97,7 +97,7 @@ public String destIP;
 public String reqMethod;
 public String reqURL;
 public String reqBody;
-public int[] paxosProvenance;
+public int msgUID;
 public Integer shardID;
 public Integer historyIndex;
 

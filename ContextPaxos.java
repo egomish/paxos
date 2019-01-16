@@ -33,8 +33,10 @@ private synchronized HttpRes doPaxosPropose (POJOReq request)
 {
     POJOReq clientreq = POJOReq.fromJSON(request.reqBody);
 
+    //HERE
+    int uid = request.msgUID;
     int reqindex = -1;
-    while (reqindex < 0) {
+    while (reqindex == -1) {
         this.log("proposing " + clientreq.reqURL + "...");
         int seqnum = nextProposalNumber();
         if (reqindex == -1) {
@@ -275,10 +277,12 @@ protected ContextPaxos ()
 {
     monotonicNumber = 0;
     seqNum = 0;
+    lastUID = -1;
 }
 
 
 private int monotonicNumber;
 private int seqNum;
+private int lastUID;
 
 }
