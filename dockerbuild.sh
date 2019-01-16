@@ -1,1 +1,1 @@
-docker build -t assignment4 .
+docker build -t paxos_uid .

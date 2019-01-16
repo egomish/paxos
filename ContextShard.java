@@ -9,6 +9,7 @@ public class ContextShard extends SmallServer implements HttpHandler {
 
 public void handle (HttpExchange exch)
 {
+/*
     this.logReceive(exch.getRequestMethod(), exch.getRequestURI().getPath());
 
     POJOReq request = this.parseRequest(exch);
@@ -17,8 +18,10 @@ public void handle (HttpExchange exch)
 
     response = doShard(request);
     sendResponse(exch, response);
+*/
 }
 
+/*
 private HttpRes doShard (POJOReq request)
 {
     String method = request.reqMethod;
@@ -163,6 +166,7 @@ private String getShardView ()
     str = str.substring(0, str.length() - 1); //strip trailing ','
     return str;
 }
+*/
 
 /*
 private HttpRes doShardableRequest (HttpExchange exch)

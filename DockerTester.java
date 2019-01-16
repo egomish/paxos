@@ -221,7 +221,7 @@ main (String[] args)
 //    test_put_key(leader_node, "foo", "bar");
 //    test_get_key(leader_node, "foo");
 
-//    test_concurrent_put_k_leader_challenger(4);
+    test_concurrent_put_k_leader_challenger(6);
 
 //    test_add_view(new_node);
 
@@ -233,15 +233,15 @@ main (String[] args)
 
 //    test_put_key(leader_node, "key1", "val1");
 //    test_put_key(leader_node, "key2", "val2");
-    test_change_shard(leader_node, 2);
+//    test_change_shard(leader_node, 2);
 //    for (String node : view) {
 //        test_get_key(node, "key2");
 //    }
 
-    for (String node : view) {
-        test_shard_get_this(leader_node);
-        test_shard_get_all(leader_node);
-    }
+//    for (String node : view) {
+//        test_shard_get_this(leader_node);
+//        test_shard_get_all(leader_node);
+//    }
 }
 
 

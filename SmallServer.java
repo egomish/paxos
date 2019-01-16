@@ -71,6 +71,7 @@ private boolean isFromHistory (String query)
     return false;
 }
 
+/*
 public POJOReq shardProtocol (POJOReq request, String key)
 {
     Integer shardid = keyDir.get(key);
@@ -105,6 +106,7 @@ protected int getDensestShard ()
     }
     return largei;
 }
+*/
 
 protected void logReceive (String method, String path)
 {
@@ -233,13 +235,18 @@ protected boolean addToHistoryAt (int reqindex, POJOReq request)
 
 protected synchronized void replayHistory ()
 {
+    if (commitIndex < 0) {
+        return;
+    }
+
     int endindex = commitIndex;
     commitIndex = 0;
     this.kvStore = new HashMap<String, String>();
 
     for (runIndex = 0; runIndex <= endindex; runIndex += 1) {
         POJOReq fromhistory = reqHistory.get(runIndex);
-        if (fromhistory.shardID == this.shardID) {
+        if (true) {
+//        if (fromhistory.shardID == this.shardID) {
             String destip = this.ipAndPort;
             String method = fromhistory.reqMethod;
             String url = fromhistory.reqURL + "?fromhistory=true"; //XXXESG hack
@@ -323,6 +330,7 @@ public static void init_server ()
     /*
      *  Initialize sharding.
      */
+/*
     shardID = 0;
     keyDir = new HashMap<String, Integer>();
     shardDir = new ArrayList<ArrayList<String>>();
@@ -344,6 +352,7 @@ public static void init_server ()
 //        String node = nodeView.get(i);
 //        shardView.add(node, i % shardView.size());
 //    }
+*/
 }
 
 /* 
@@ -400,10 +409,12 @@ public static HashMap<Integer, POJOReq> reqHistory;
 public static int runIndex;
 public static int commitIndex;
 
+/*
 public static int shardID;
 public static int shardCount;
 public static TreeMap<String, Integer> shardView;
 public static ArrayList<ArrayList<String>> shardDir;
 public static HashMap<String, Integer> keyDir;
+*/
 
 }

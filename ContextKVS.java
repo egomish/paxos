@@ -14,17 +14,21 @@ public void handle (HttpExchange exch)
 
     POJOReq request = this.parseRequest(exch);
     request = this.consensusProtocol(request);
-    request = this.shardProtocol(request, parseKeyFromURL(request.reqURL));
+//    request = this.shardProtocol(request, parseKeyFromURL(request.reqURL));
     HttpRes response;
 
+/*
     System.out.println("for shard: " + request.shardID);
     System.out.println("this shard: " + this.shardID);
     if ((request.shardID == null) || (request.shardID == this.shardID)) {
+*/
         response = doKVS(request);
+/*
     } else {
         response = new HttpRes(412, "not my shard");
         response.contentType = null;
     }
+*/
     sendResponse(exch, response);
 }
 
@@ -93,7 +97,7 @@ public HttpRes doKVS (POJOReq request)
         resbody.msg = method + " " + url + " not allowed";
     }
 
-    resbody.payload = this.getHistory();
+//    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }
@@ -126,7 +130,7 @@ public HttpRes doKVSSearch (POJOReq request)
         resbody.msg = method + " " + url + " not allowed";
     }
 
-    resbody.payload = this.getHistory();
+//    resbody.payload = this.getHistory();
     response = new HttpRes(rescode, resbody.toJSON());
     return response;
 }
